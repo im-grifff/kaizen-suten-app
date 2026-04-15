@@ -70,9 +70,17 @@ service cloud.firestore {
     }
 
     match /tradein_requests/{id} {
-      allow read: if isRoot() || roleIs('tradein');
+      allow read: if isRoot() || roleIn(['tradein', 'supervisor', 'aftersales']);
       allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid;
       allow update: if isRoot() || roleIs('tradein');
+    }
+
+    match /registration_requests/{id} {
+      allow read, update: if isRoot() || roleIn(['supervisor', 'aftersales']);
+      allow create: if isCustomerApp()
+        && request.resource.data.plateNumber is string
+        && request.resource.data.plateNumber.size() > 0
+        && request.resource.data.status == 'new';
     }
 
     match /model_types/{model} {

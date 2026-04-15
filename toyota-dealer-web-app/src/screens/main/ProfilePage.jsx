@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { createRegistrationRequest } from '../../firestore/registrationRequests.js'
+import { normalizePlate } from '../../utils/plateFormat.js'
 
 function buildCrWaUrl({ waNumber, plate }) {
   const cleaned = String(waNumber || '').replace(/[^\d]/g, '')
@@ -22,6 +24,18 @@ export function ProfilePage() {
 
   const crNumber = import.meta.env.VITE_CR_WA_NUMBER || '6285712345678'
 
+  async function onDaftarkanClick() {
+    const plate = normalizePlate(plateNumber || '')
+    if (plate) {
+      try {
+        await createRegistrationRequest({ plateNumber: plate })
+      } catch {
+        // tetap buka WA meski gagal simpan
+      }
+    }
+    window.open(buildCrWaUrl({ waNumber: crNumber, plate: plateNumber || '-' }), '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <div className="page page--profile">
       <h1 className="h1">Profile</h1>
@@ -35,15 +49,14 @@ export function ProfilePage() {
           <div className="muted" style={{ marginTop: 8 }}>
             Nomor polisi: <span className="mono">{plateNumber || '-'}</span>
           </div>
-          <a
+          <button
+            type="button"
             className="btn btn--primary"
             style={{ marginTop: 14, width: '100%', textAlign: 'center' }}
-            href={buildCrWaUrl({ waNumber: crNumber, plate: plateNumber || '-' })}
-            target="_blank"
-            rel="noreferrer"
+            onClick={() => void onDaftarkanClick()}
           >
             Daftarkan
-          </a>
+          </button>
         </div>
       ) : null}
 
