@@ -96,9 +96,16 @@ service cloud.firestore {
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() >= 2
         && waKey.size() >= 11;
+      // Baca: (1) dokumen belum ada → cek first-time login sebelum wa_sessions ditulis;
+      // (2) sudah login → wa_sessions.waKey harus cocok (tidak boleh baca profil WA orang lain).
       allow read: if isCustomerApp()
-        && exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
-        && get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey == waKey;
+        && (
+          !exists(/databases/$(database)/documents/wa_customers/$(waKey))
+          || (
+            exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
+            && get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey == waKey
+          )
+        );
       allow update: if false;
     }
 
