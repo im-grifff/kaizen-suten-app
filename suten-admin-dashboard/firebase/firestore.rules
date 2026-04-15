@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function roleIs(r) {
+      return signedIn() && request.auth.token.role == r;
+    }
+    function roleIn(list) {
+      return signedIn() && (request.auth.token.role in list);
+    }
+    function isRoot() {
+      return roleIs('root');
+    }
+
+    // App pelanggan: Anonymous Auth — token sering TIDAK memenuhi `role == null` seperti di dokumentasi.
+    // Gunakan provider `anonymous` eksplisit, atau tidak ada claim `role` (fallback).
+    function isAnonymousProvider() {
+      return signedIn()
+        && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+    function hasNoRoleClaim() {
+      return signedIn() && !request.auth.token.keys().hasAny(['role']);
+    }
+    function isCustomerApp() {
+      return isAnonymousProvider() || hasNoRoleClaim() || request.auth.token.role == null;
+    }
+
+    function isCustomerSelf(uid) {
+      return signedIn() && request.auth.uid == uid && isCustomerApp();
+    }
+
+    function plateSessionDoc() {
+      return get(/databases/$(database)/documents/plate_sessions/$(request.auth.uid));
+    }
+
+    function canReadUserByPlateSession(uid) {
+      return exists(/databases/$(database)/documents/plate_sessions/$(request.auth.uid))
+        && plateSessionDoc().data.targetUid == uid;
+    }
+
+    function canReadUserByPlateIndex(uid) {
+      return signedIn()
+        && isCustomerApp()
+        && exists(/databases/$(database)/documents/plate_index/$(uid))
+        && get(/databases/$(database)/documents/plate_index/$(uid)).data.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read, write: if isRoot() || roleIn(['supervisor', 'aftersales']) || isCustomerSelf(uid);
+      allow read: if canReadUserByPlateIndex(uid);
+      allow read: if canReadUserByPlateSession(uid) && isCustomerApp();
+    }
+
+    match /pricelist/{id} {
+      allow read: if signedIn();
+      allow write: if isRoot() || roleIs('supervisor');
+    }
+
+    match /tshop_products/{id} {
+      allow read: if signedIn();
+      allow write: if isRoot() || roleIs('aftersales');
+    }
+
+    match /tshop_orders/{id} {
+      allow read: if isRoot() || roleIs('aftersales');
+      allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid;
+      allow update: if isRoot() || roleIs('aftersales');
+    }
+
+    match /tradein_requests/{id} {
+      allow read: if isRoot() || roleIs('tradein');
+      allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid;
+      allow update: if isRoot() || roleIs('tradein');
+    }
+
+    match /model_types/{model} {
+      allow read: if signedIn();
+      allow write: if isRoot();
+    }
+
+    match /plate_index/{plate} {
+      allow read: if signedIn() && isCustomerApp();
+      allow read: if isRoot() || roleIn(['supervisor', 'aftersales']);
+      allow write: if isRoot() || roleIn(['supervisor', 'aftersales']);
+    }
+
+    match /plate_sessions/{uid} {
+      allow read: if isRoot() || (isCustomerApp() && request.auth.uid == uid);
+      allow create, update: if isCustomerApp()
+        && request.auth.uid == uid
+        && request.resource.data.plate is string
+        && request.resource.data.targetUid is string
+        && get(/databases/$(database)/documents/plate_index/$(request.resource.data.plate)).data.uid == request.resource.data.targetUid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

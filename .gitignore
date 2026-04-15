@@ -1,0 +1,24 @@
+# Root gitignore for monorepo
+
+# dependencies + builds
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/build/
+**/.vite/
+
+# env / secrets
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.p12
+*serviceAccount*.json
+*firebase-adminsdk*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+**/.vscode/
+**/.idea/
+

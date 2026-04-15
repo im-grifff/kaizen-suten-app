@@ -1,0 +1,73 @@
+/** Shared demo customer rows — plat tanpa spasi, huruf besar */
+export const MOCK_CUSTOMERS = [
+  {
+    plateNumber: 'DB1234GL',
+    waPhone: '+6281211112222',
+    owner: { namaPemilik: 'Budi Santoso', alamat: 'Jl. Piere Tendean No. 12, Manado' },
+    vehicle: {
+      model: 'AGYA',
+      type: 'G CVT',
+      year: '2022',
+      color: 'WHITE',
+      noMesin: '1KR-FAE-AGY-2201-8891',
+      noRangka: 'MHKA1AGYA22X001234',
+      noPolisi: 'DB1234GL',
+    },
+  },
+  {
+    plateNumber: 'DB8899XX',
+    waPhone: '+6281233334444',
+    owner: { namaPemilik: 'Siti Aulia', alamat: 'Perumahan Mapanget, Blok C-7, Manado' },
+    vehicle: {
+      model: 'CALYA',
+      type: 'G M/T',
+      year: '2020',
+      color: 'SILVER',
+      noMesin: '3NR-FE-CAL-2009-1120',
+      noRangka: 'MHKA1CALYA20X009876',
+      noPolisi: 'DB8899XX',
+    },
+  },
+  {
+    plateNumber: 'DB4556AB',
+    waPhone: '+6281255556666',
+    owner: { namaPemilik: 'Andi Wijaya', alamat: 'Jl. Sam Ratulangi No. 5, Manado' },
+    vehicle: {
+      model: 'RUSH',
+      type: 'S A/T GR Sport',
+      year: '2023',
+      color: 'BLACK',
+      noMesin: '2NR-VE-RUS-2303-5402',
+      noRangka: 'MHKA1RUSH23X004556',
+      noPolisi: 'DB4556AB',
+    },
+  },
+  {
+    plateNumber: 'DB7771CD',
+    waPhone: '+6281277771111',
+    owner: { namaPemilik: 'Rina Lumentut', alamat: 'Jl. Wolter Monginsidi No. 21, Manado' },
+    vehicle: {
+      model: 'AVANZA',
+      type: 'G MT',
+      year: '2019',
+      color: 'GRAY',
+      noMesin: '2NR-VE-AVA-1906-7788',
+      noRangka: 'MHKA1AVANZ19X007771',
+      noPolisi: 'DB7771CD',
+    },
+  },
+  {
+    plateNumber: 'DB2026SU',
+    waPhone: '+6281220262026',
+    owner: { namaPemilik: 'Griffin (Demo)', alamat: 'Manado (Demo)' },
+    vehicle: {
+      model: 'RAIZE',
+      type: 'G CVT',
+      year: '2024',
+      color: 'RED',
+      noMesin: '1KR-VET-RAI-2402-2026',
+      noRangka: 'MHKA1RAIZE24X002026',
+      noPolisi: 'DB2026SU',
+    },
+  },
+]
