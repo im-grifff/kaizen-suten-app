@@ -107,6 +107,10 @@ export function TradeInRequestsPage() {
     return rows.filter((r) => deriveAdminStage(r) === tab)
   }, [rows, tab])
 
+  /** Kolom harga fix + alasan hanya dari tab Inspected ke bawah. */
+  const showFixAndReason = tab === 'inspected' || tab === 'dealing' || tab === 'cancel'
+  const estimateEditable = tab === 'new'
+
   async function persistEstimate(id) {
     const r = rowById.get(id)
     if (!r) return
@@ -284,7 +288,16 @@ export function TradeInRequestsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ textAlign: 'left' }}>
-                {['Created', 'Customer', 'WA', 'Unit', 'Detail', 'Estimasi', 'Harga fix', 'Alasan', 'Aksi'].map((h) => (
+                {[
+                  'Created',
+                  'Customer',
+                  'WA',
+                  'Unit',
+                  'Detail',
+                  'Estimasi',
+                  ...(showFixAndReason ? ['Harga fix', 'Alasan'] : []),
+                  'Aksi',
+                ].map((h) => (
                   <th key={h} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
                     {h}
                   </th>
@@ -294,7 +307,7 @@ export function TradeInRequestsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="muted" style={{ padding: 12 }}>
+                  <td colSpan={showFixAndReason ? 9 : 7} className="muted" style={{ padding: 12 }}>
                     Tidak ada data di tab ini.
                   </td>
                 </tr>
@@ -335,68 +348,108 @@ export function TradeInRequestsPage() {
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                           <input
                             className="input"
-                            style={{ width: 90 }}
-                            placeholder="Min"
-                            value={e.low}
-                            onChange={(ev) => {
-                              const v = ev.target.value
-                              setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), low: v } }))
+                            style={{
+                              width: 90,
+                              opacity: estimateEditable ? 1 : 0.75,
+                              cursor: estimateEditable ? undefined : 'not-allowed',
                             }}
-                            onBlur={() => persistEstimate(r.id)}
+                            placeholder="Min"
+                            readOnly={!estimateEditable}
+                            value={e.low}
+                            onChange={
+                              estimateEditable
+                                ? (ev) => {
+                                    const v = ev.target.value
+                                    setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), low: v } }))
+                                  }
+                                : undefined
+                            }
+                            onBlur={estimateEditable ? () => persistEstimate(r.id) : undefined}
                           />
                           <span className="muted">-</span>
                           <input
                             className="input"
-                            style={{ width: 90 }}
-                            placeholder="Max"
-                            value={e.high}
-                            onChange={(ev) => {
-                              const v = ev.target.value
-                              setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), high: v } }))
+                            style={{
+                              width: 90,
+                              opacity: estimateEditable ? 1 : 0.75,
+                              cursor: estimateEditable ? undefined : 'not-allowed',
                             }}
-                            onBlur={() => persistEstimate(r.id)}
+                            placeholder="Max"
+                            readOnly={!estimateEditable}
+                            value={e.high}
+                            onChange={
+                              estimateEditable
+                                ? (ev) => {
+                                    const v = ev.target.value
+                                    setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), high: v } }))
+                                  }
+                                : undefined
+                            }
+                            onBlur={estimateEditable ? () => persistEstimate(r.id) : undefined}
                           />
+                          {!estimateEditable ? (
+                            <span className="muted" style={{ fontSize: 10 }}>
+                              (kunci)
+                            </span>
+                          ) : null}
                           {savingId === r.id ? <span className="muted">…</span> : null}
                         </div>
                       </td>
 
-                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                        {tab === 'dealing' ? (
-                          <strong>
-                            {r.fixedPrice != null ? `Rp${formatIdrCompact(String(r.fixedPrice))}` : '-'}
-                          </strong>
-                        ) : (
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <input
-                              className="input"
-                              style={{ width: 100 }}
-                              placeholder="Rp fix"
-                              value={fixedDraft[r.id] ?? ''}
-                              onChange={(ev) =>
-                                setFixedDraft((s) => ({ ...s, [r.id]: ev.target.value }))
-                              }
-                            />
-                            <button type="button" className="btn" onClick={() => persistFixed(r.id)}>
-                              Simpan
-                            </button>
-                          </div>
-                        )}
-                      </td>
+                      {showFixAndReason ? (
+                        <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          {tab === 'dealing' || tab === 'cancel' ? (
+                            <strong>
+                              {r.fixedPrice != null && Number(r.fixedPrice) > 0
+                                ? `Rp${formatIdrCompact(String(r.fixedPrice))}`
+                                : '-'}
+                            </strong>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <input
+                                className="input"
+                                style={{ width: 100 }}
+                                placeholder="Rp fix"
+                                value={fixedDraft[r.id] ?? ''}
+                                onChange={(ev) =>
+                                  setFixedDraft((s) => ({ ...s, [r.id]: ev.target.value }))
+                                }
+                              />
+                              <button type="button" className="btn" onClick={() => persistFixed(r.id)}>
+                                Simpan
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      ) : null}
 
-                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                        <textarea
-                          className="input"
-                          style={{ width: 160, minHeight: 48, resize: 'vertical' }}
-                          placeholder="Alasan batal"
-                          value={cancelDraft[r.id] ?? ''}
-                          onChange={(ev) =>
-                            setCancelDraft((s) => ({ ...s, [r.id]: ev.target.value }))
-                          }
-                        />
-                        <button type="button" className="btn" style={{ marginTop: 4 }} onClick={() => persistCancelReason(r.id)}>
-                          Simpan alasan
-                        </button>
-                      </td>
+                      {showFixAndReason ? (
+                        <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          <textarea
+                            className="input"
+                            style={{ width: 160, minHeight: 48, resize: 'vertical' }}
+                            placeholder="Alasan batal"
+                            readOnly={tab === 'dealing'}
+                            value={cancelDraft[r.id] ?? ''}
+                            onChange={
+                              tab !== 'dealing'
+                                ? (ev) =>
+                                    setCancelDraft((s) => ({ ...s, [r.id]: ev.target.value }))
+                                : undefined
+                            }
+                          />
+                          {tab !== 'dealing' ? (
+                            <button
+                              type="button"
+                              className="btn"
+                              style={{ marginTop: 4 }}
+                              onClick={() => persistCancelReason(r.id)}
+                            >
+                              Simpan alasan
+                            </button>
+                          ) : null}
+                        </td>
+                      ) : null}
 
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
@@ -416,11 +469,11 @@ export function TradeInRequestsPage() {
                               <button
                                 type="button"
                                 className="btn"
-                                onClick={() =>
-                                  setStage(r.id, 'cancel', {
-                                    cancelReason: cancelDraft[r.id] || 'Dibatalkan',
-                                  })
-                                }
+                                onClick={() => {
+                                  const reason =
+                                    window.prompt('Alasan pembatalan:', '')?.trim() || 'Dibatalkan'
+                                  void setStage(r.id, 'cancel', { cancelReason: reason })
+                                }}
                               >
                                 Batalkan
                               </button>
@@ -437,11 +490,11 @@ export function TradeInRequestsPage() {
                               <button
                                 type="button"
                                 className="btn"
-                                onClick={() =>
-                                  setStage(r.id, 'cancel', {
-                                    cancelReason: cancelDraft[r.id] || 'Dibatalkan',
-                                  })
-                                }
+                                onClick={() => {
+                                  const reason =
+                                    window.prompt('Alasan pembatalan:', '')?.trim() || 'Dibatalkan'
+                                  void setStage(r.id, 'cancel', { cancelReason: reason })
+                                }}
                               >
                                 Batalkan
                               </button>
