@@ -34,12 +34,15 @@ export function LoginPlatePage() {
   return (
     <div className="screen">
       <div className="card">
-        <h1 className="h1">Masuk</h1>
-        <p className="muted">
-          Masukkan <b>Plat Nomor</b> untuk akses aplikasi.
-        </p>
+        <div className="brand">
+          <div className="brand__mark">SUTEN</div>
+          <div className="brand__text">
+            <div className="brand__title">SUTEN</div>
+            <div className="brand__subtitle">TOYOTA TENDEAN MANADO</div>
+          </div>
+        </div>
 
-        <form onSubmit={onSubmit} className="form">
+        <form onSubmit={onSubmit} className="form" style={{ marginTop: 16 }}>
           <label className="label" htmlFor="plate">
             Plat Nomor
           </label>

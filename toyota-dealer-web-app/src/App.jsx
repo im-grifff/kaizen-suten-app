@@ -2,7 +2,6 @@ import './App.css'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './routes/ProtectedRoute.jsx'
 import { PublicOnlyRoute } from './routes/PublicOnlyRoute.jsx'
-import { AccessPage } from './screens/onboarding/AccessPage.jsx'
 import { LoginPlatePage } from './screens/onboarding/LoginPlatePage.jsx'
 import { MainLayout } from './screens/main/MainLayout.jsx'
 import { HomePage } from './screens/main/HomePage.jsx'
@@ -20,18 +19,11 @@ export default function App() {
         path="/access"
         element={
           <PublicOnlyRoute>
-            <AccessPage />
-          </PublicOnlyRoute>
-        }
-      />
-      <Route
-        path="/login"
-        element={
-          <PublicOnlyRoute>
             <LoginPlatePage />
           </PublicOnlyRoute>
         }
       />
+      <Route path="/login" element={<Navigate to="/access" replace />} />
 
       <Route
         path="/app"
