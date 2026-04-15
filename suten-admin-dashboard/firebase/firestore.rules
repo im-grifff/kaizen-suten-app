@@ -96,16 +96,10 @@ service cloud.firestore {
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() >= 2
         && waKey.size() >= 11;
-      // Baca: (1) dokumen belum ada → cek first-time login sebelum wa_sessions ditulis;
-      // (2) sudah login → wa_sessions.waKey harus cocok (tidak boleh baca profil WA orang lain).
-      allow read: if isCustomerApp()
-        && (
-          !exists(/databases/$(database)/documents/wa_customers/$(waKey))
-          || (
-            exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
-            && get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey == waKey
-          )
-        );
+      // Baca: tanpa OTP, user yang nomor WA-nya sudah terdaftar harus bisa `get` dokumen ini
+      // saat UID anon baru (belum ada wa_sessions). Memaksa cocok dengan wa_sessions dulu
+      // memblokir login ulang / perangkat lain. Data di dokumen ini terbatas (nama tampilan).
+      allow read: if isCustomerApp();
       allow update: if false;
     }
 
