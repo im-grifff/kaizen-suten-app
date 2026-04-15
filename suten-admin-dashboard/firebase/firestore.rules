@@ -47,6 +47,16 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/plate_index/$(uid)).data.uid == uid;
     }
 
+    function waSessionWaKey() {
+      return get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey;
+    }
+
+    function tradeinReadableByWaSession() {
+      return isCustomerApp()
+        && exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
+        && resource.data.customerWaKey == waSessionWaKey();
+    }
+
     match /users/{uid} {
       allow read, write: if isRoot() || roleIn(['supervisor', 'aftersales']) || isCustomerSelf(uid);
       allow read: if canReadUserByPlateIndex(uid);
@@ -69,9 +79,39 @@ service cloud.firestore {
       allow update: if isRoot() || roleIs('aftersales');
     }
 
+    match /wa_sessions/{uid} {
+      allow read: if isRoot() || (isCustomerApp() && request.auth.uid == uid);
+      allow create, update: if isCustomerApp()
+        && request.auth.uid == uid
+        && request.resource.data.waKey is string
+        && request.resource.data.waKey.size() >= 11
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2;
+      allow delete: if isCustomerApp() && request.auth.uid == uid;
+    }
+
+    match /wa_customers/{waKey} {
+      allow create: if isCustomerApp()
+        && waKey == request.resource.data.waKey
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && waKey.size() >= 11;
+      allow read: if isCustomerApp()
+        && exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
+        && get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey == waKey;
+      allow update: if false;
+    }
+
     match /tradein_requests/{id} {
-      allow read: if isRoot() || roleIn(['tradein', 'supervisor', 'aftersales']);
-      allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid;
+      allow read: if isRoot()
+        || roleIn(['tradein', 'supervisor', 'aftersales'])
+        || tradeinReadableByWaSession();
+      allow create: if isCustomerApp()
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.customerWaKey is string
+        && exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
+        && get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey
+          == request.resource.data.customerWaKey;
       allow update: if isRoot() || roleIs('tradein');
     }
 

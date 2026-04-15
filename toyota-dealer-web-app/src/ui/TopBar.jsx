@@ -1,8 +1,7 @@
-import { NavLink } from 'react-router-dom'
 import { useAuth } from '../state/AuthContext.jsx'
 
 export function TopBar() {
-  const { authUser } = useAuth()
+  const { customerDisplayName, logout } = useAuth()
 
   return (
     <header className="topbar">
@@ -13,19 +12,13 @@ export function TopBar() {
         </div>
       </div>
       <div className="topbar__right">
-        <span className="topbar__meta mono">
-          {authUser?.phoneNumber || ''}
+        <span className="topbar__meta" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {customerDisplayName || ''}
         </span>
-        <NavLink
-          to="/app/profile"
-          className={({ isActive }) =>
-            `btn btn--small ${isActive ? 'btn--primary' : 'btn--ghost'}`
-          }
-        >
-          Profile
-        </NavLink>
+        <button type="button" className="btn btn--small btn--ghost" onClick={() => void logout()}>
+          Keluar
+        </button>
       </div>
     </header>
   )
 }
-

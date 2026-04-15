@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { getDemoUserSnapshot } from '../../demo/demoData.js'
 
 const fallbackBanners = [
   {
@@ -16,19 +17,17 @@ const fallbackBanners = [
 ]
 
 export function HomePage() {
-  const { userSnapshot, plateNumber } = useAuth()
-
-  const namaUser = userSnapshot?.owner?.namaPemilik || 'User'
-  const noPolisi =
-    userSnapshot?.vehicle?.noPolisi || userSnapshot?.plateNumber || plateNumber || '-'
-  const carPng =
-    userSnapshot?.vehicle?.vehicleImageUrl || '/car-home.png'
+  const { customerDisplayName, demoMode, customerWaKey } = useAuth()
 
   const banners = useMemo(() => {
-    const list = userSnapshot?.promoBanners
-    if (list && list.length > 0) return list
+    if (demoMode && customerWaKey) {
+      const snap = getDemoUserSnapshot(customerWaKey, customerDisplayName)
+      if (snap.promoBanners?.length) return snap.promoBanners
+    }
     return fallbackBanners
-  }, [userSnapshot?.promoBanners])
+  }, [demoMode, customerWaKey, customerDisplayName])
+
+  const namaUser = customerDisplayName || 'User'
 
   const [slide, setSlide] = useState(0)
   const touchStartX = useRef(null)
@@ -66,17 +65,13 @@ export function HomePage() {
         </h1>
       </section>
 
-      <section className="homeVehicle">
-        <div className="homeVehicle__frame">
-          <img
-            src={carPng}
-            alt={`Kendaraan ${noPolisi}`}
-            className="homeVehicle__img"
-            loading="lazy"
-          />
-        </div>
-        <div className="homePlate" aria-label="Nomor polisi">
-          <span className="homePlate__inner">{noPolisi}</span>
+      <section className="homeLogoBlock" aria-label="SUTEN">
+        <div className="brand brand--homeHero">
+          <div className="brand__mark">SUTEN</div>
+          <div className="brand__text">
+            <div className="brand__title">SUTEN</div>
+            <div className="brand__subtitle">TOYOTA TENDEAN MANADO</div>
+          </div>
         </div>
       </section>
 

@@ -11,7 +11,7 @@ import { createTshopOrder, fetchActiveTshopProducts } from '../../firestore/tsho
 const CATS = ['spare_part', 'oli', 'ban']
 
 export function TshopPage() {
-  const { authUser, userSnapshot } = useAuth()
+  const { authUser, customerDisplayName, customerWaKey } = useAuth()
   const { items, addItem, setQty, totals, clearCart } = useCart()
   const [cat, setCat] = useState('spare_part')
   const [checkoutOpen, setCheckoutOpen] = useState(false)
@@ -64,8 +64,9 @@ export function TshopPage() {
     try {
       const payload = {
         customerUid: authUser.uid,
-        plateNumber: userSnapshot?.plateNumber || userSnapshot?.vehicle?.noPolisi || '',
-        customerName: userSnapshot?.owner?.namaPemilik || '',
+        plateNumber: '',
+        customerWaKey: customerWaKey || '',
+        customerName: customerDisplayName || '',
         pickupDate: pickupDate || '',
         items: items.map((x) => ({
           productId: x.productId,
@@ -83,7 +84,7 @@ export function TshopPage() {
     } catch (err) {
       const code = err?.code || ''
       if (code === 'permission-denied') {
-        setOrderErr('Tidak punya izin untuk membuat order. Pastikan Anda sudah login (plate) dan coba lagi.')
+        setOrderErr('Tidak punya izin untuk membuat order. Pastikan Anda sudah login dan coba lagi.')
       } else {
         setOrderErr(err?.message || 'Gagal membuat order.')
       }

@@ -1,8 +1,10 @@
-const WA = {
+export const demoContactNumbers = {
   nomor_sales: '6285712345678',
   nomor_inspeksi: '6285712349999',
   nomor_SA: '6285712350000',
 }
+
+const WA = demoContactNumbers
 
 export const demoCars = [
   {
@@ -82,12 +84,29 @@ export const tshopCategoryLabels = {
   ban: 'Ban',
 }
 
-export function getDemoUserSnapshot(phoneE164) {
-  const userId = phoneE164
+const DEMO_WA_NAMES_KEY = 'demo_wa_display_names_v1'
+
+/** Demo: nama pertama per nomor WA disimpan di sessionStorage. */
+export function getDemoUserSnapshot(waKey, nameAttempt) {
+  let displayName = String(nameAttempt || '').trim() || 'Customer'
+  try {
+    const raw = sessionStorage.getItem(DEMO_WA_NAMES_KEY)
+    const map = raw ? JSON.parse(raw) : {}
+    if (map[waKey]) displayName = map[waKey]
+    else {
+      map[waKey] = displayName
+      sessionStorage.setItem(DEMO_WA_NAMES_KEY, JSON.stringify(map))
+    }
+  } catch {
+    // ignore
+  }
+
+  const userId = waKey
   return {
     userId,
+    displayName,
     owner: {
-      namaPemilik: 'Budi Santoso',
+      namaPemilik: displayName,
       alamat: 'Jl. Mawar No. 12, Jakarta',
     },
     vehicle: {

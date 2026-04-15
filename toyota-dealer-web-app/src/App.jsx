@@ -2,13 +2,12 @@ import './App.css'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './routes/ProtectedRoute.jsx'
 import { PublicOnlyRoute } from './routes/PublicOnlyRoute.jsx'
-import { LoginPlatePage } from './screens/onboarding/LoginPlatePage.jsx'
+import { LoginCustomerPage } from './screens/onboarding/LoginCustomerPage.jsx'
 import { MainLayout } from './screens/main/MainLayout.jsx'
 import { HomePage } from './screens/main/HomePage.jsx'
 import { PricelistPage } from './screens/main/PricelistPage.jsx'
 import { TradeInPage } from './screens/main/TradeInPage.jsx'
 import { TshopPage } from './screens/main/TshopPage.jsx'
-import { ProfilePage } from './screens/main/ProfilePage.jsx'
 
 export default function App() {
   return (
@@ -19,7 +18,7 @@ export default function App() {
         path="/access"
         element={
           <PublicOnlyRoute>
-            <LoginPlatePage />
+            <LoginCustomerPage />
           </PublicOnlyRoute>
         }
       />
@@ -37,7 +36,6 @@ export default function App() {
         <Route path="pricelist" element={<PricelistPage />} />
         <Route path="trade-in" element={<TradeInPage />} />
         <Route path="tshop" element={<TshopPage />} />
-        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/access" replace />} />

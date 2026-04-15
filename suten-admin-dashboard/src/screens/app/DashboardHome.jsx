@@ -15,13 +15,21 @@ function canReadRegistrationRequests(role) {
   return role === 'root' || role === 'supervisor' || role === 'aftersales'
 }
 
+function deriveTradeinStage(r) {
+  if (r.adminStage) return r.adminStage
+  if (r.status === 'cancelled' || r.status === 'canceled') return 'cancel'
+  if (r.status === 'contacted') return 'contacted'
+  return 'new'
+}
+
 function tradeinCounts(rows) {
-  let contacted = 0
+  let newCount = 0
+  let processed = 0
   for (const r of rows) {
-    if (r.status === 'contacted') contacted += 1
+    if (deriveTradeinStage(r) === 'new') newCount += 1
+    else processed += 1
   }
-  const request = Math.max(0, rows.length - contacted)
-  return { request, contacted }
+  return { request: newCount, contacted: processed }
 }
 
 function formatTs(ts) {

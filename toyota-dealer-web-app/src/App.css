@@ -541,6 +541,26 @@
   color: rgba(255, 255, 255, 0.98);
 }
 
+.homeLogoBlock {
+  display: grid;
+  justify-items: center;
+  margin-bottom: 22px;
+}
+
+.brand--homeHero {
+  width: 100%;
+  max-width: 340px;
+  padding: 20px 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.brand--homeHero .brand__mark {
+  font-size: 20px;
+  padding: 14px 16px;
+}
+
 .homeVehicle {
   display: grid;
   justify-items: center;

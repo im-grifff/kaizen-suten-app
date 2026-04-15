@@ -5,7 +5,6 @@ const items = [
   { to: '/app/pricelist', label: 'Pricelist' },
   { to: '/app/trade-in', label: 'Trade In', primary: true },
   { to: '/app/tshop', label: 'Tshop' },
-  { to: '/app/profile', label: 'Profile' },
 ]
 
 export function BottomNav() {

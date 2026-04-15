@@ -1,45 +1,138 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
-import { createTradeinRequest } from '../../firestore/tradeinRequests.js'
+import { createTradeinRequest, listenTradeinRequestsForWa } from '../../firestore/tradeinRequests.js'
+import { customerTradeInPriceLabel, pipelineLabel } from '../../utils/tradeinCustomerStatus.js'
 
-function buildInspeksiWaUrl({ nomor_inspeksi, tipe, tahun }) {
-  const pesan = `Halo SUTEN, saya ingin INSPEKSI untuk Trade In. Tipe mobil lama: ${tipe}. Tahun: ${tahun}. Mohon info jadwal inspeksi.`
-  return `https://wa.me/${encodeURIComponent(
-    nomor_inspeksi,
-  )}?text=${encodeURIComponent(pesan)}`
+const DEMO_TRADEIN_KEY = 'demo_tradein_history_v1'
+
+function loadDemoHistory(waKey) {
+  try {
+    const raw = localStorage.getItem(DEMO_TRADEIN_KEY)
+    const all = raw ? JSON.parse(raw) : {}
+    return Array.isArray(all[waKey]) ? all[waKey] : []
+  } catch {
+    return []
+  }
+}
+
+function saveDemoHistory(waKey, rows) {
+  try {
+    const raw = localStorage.getItem(DEMO_TRADEIN_KEY)
+    const all = raw ? JSON.parse(raw) : {}
+    all[waKey] = rows
+    localStorage.setItem(DEMO_TRADEIN_KEY, JSON.stringify(all))
+  } catch {
+    // ignore
+  }
+}
+
+function formatTs(ts) {
+  if (ts?.toDate) return ts.toDate().toLocaleString('id-ID')
+  if (typeof ts === 'string') return ts
+  return new Date().toLocaleString('id-ID')
 }
 
 export function TradeInPage() {
-  const { authUser, userSnapshot } = useAuth()
-  const waNumbers = userSnapshot?.waNumbers || {}
+  const { authUser, customerWaKey, customerDisplayName, demoMode } = useAuth()
 
-  const [tipeMobilLama, setTipeMobilLama] = useState('')
-  const [tahun, setTahun] = useState('')
+  const [merkModel, setMerkModel] = useState('')
+  const [transmission, setTransmission] = useState('Matic')
+  const [year, setYear] = useState('')
+  const [color, setColor] = useState('')
+  const [km, setKm] = useState('')
+  const [stnkMonth, setStnkMonth] = useState('')
+  const [bpkbStatus, setBpkbStatus] = useState('Tersedia')
+  const [expectLowPrice, setExpectLowPrice] = useState('')
+  const [newCarModel, setNewCarModel] = useState('')
+
+  const [rows, setRows] = useState([])
+  const [listErr, setListErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [doneMsg, setDoneMsg] = useState('')
 
-  const canSubmit = useMemo(() => {
-    return tipeMobilLama.trim().length >= 2 && String(tahun).trim().length >= 4
-  }, [tipeMobilLama, tahun])
+  const refreshDemo = useCallback(() => {
+    if (demoMode && customerWaKey) setRows(loadDemoHistory(customerWaKey))
+  }, [demoMode, customerWaKey])
 
-  async function onRequestInspeksi() {
-    if (!canSubmit) return
+  useEffect(() => {
+    refreshDemo()
+  }, [refreshDemo])
+
+  useEffect(() => {
+    if (demoMode || !customerWaKey) return undefined
+    const unsub = listenTradeinRequestsForWa(customerWaKey, {
+      onData: (r) => {
+        setListErr('')
+        setRows(r)
+      },
+      onError: (e) => setListErr(e?.message || 'Gagal memuat riwayat'),
+    })
+    return () => unsub?.()
+  }, [demoMode, customerWaKey])
+
+  const canSubmit = useMemo(() => {
+    return (
+      merkModel.trim().length >= 2 &&
+      String(year).trim().length >= 2 &&
+      color.trim().length >= 1 &&
+      km.trim().length >= 1 &&
+      stnkMonth.trim().length >= 2 &&
+      expectLowPrice.trim().length >= 1 &&
+      newCarModel.trim().length >= 2
+    )
+  }, [merkModel, year, color, km, stnkMonth, expectLowPrice, newCarModel])
+
+  async function onSubmit(e) {
+    e.preventDefault()
     setDoneMsg('')
+    if (!canSubmit || !customerWaKey) return
+    const payload = {
+      customerUid: authUser?.uid || '',
+      customerWaKey,
+      customerPhone: customerWaKey,
+      customerName: customerDisplayName || 'Customer',
+      merkModel: merkModel.trim(),
+      transmission,
+      year: String(year).trim(),
+      color: color.trim(),
+      km: km.trim(),
+      stnkMonth: stnkMonth.trim(),
+      bpkbStatus,
+      expectLowPrice: expectLowPrice.trim(),
+      newCarModel: newCarModel.trim(),
+      carType: `${merkModel.trim()} ${transmission}`.trim(),
+    }
+
     setSubmitting(true)
     try {
-      // If Firebase isn't configured (demo mode), this will fail silently and we still allow WA flow.
-      if (authUser?.uid) {
-        await createTradeinRequest({
-          customerUid: authUser.uid,
-          plateNumber: userSnapshot?.vehicle?.noPolisi || userSnapshot?.plateNumber || '',
-          customerName: userSnapshot?.owner?.namaPemilik || '',
-          carType: tipeMobilLama.trim(),
-          year: String(tahun).trim(),
-        })
-        setDoneMsg('Request inspeksi terkirim. Tim Trade In akan menghubungi Anda via WhatsApp.')
+      if (demoMode) {
+        const id = `demo-${Date.now()}`
+        const row = {
+          id,
+          ...payload,
+          adminStage: 'new',
+          status: 'new',
+          createdAt: new Date().toISOString(),
+        }
+        const next = [row, ...loadDemoHistory(customerWaKey)]
+        saveDemoHistory(customerWaKey, next)
+        setRows(next)
+        setDoneMsg('Request tersimpan (mode demo).')
+      } else if (authUser?.uid) {
+        await createTradeinRequest(payload)
+        setDoneMsg('Request trade in terkirim.')
       }
-    } catch {
-      // ignore and still allow WA link to work
+      setMerkModel('')
+      setYear('')
+      setColor('')
+      setKm('')
+      setStnkMonth('')
+      setExpectLowPrice('')
+      setNewCarModel('')
+      setTransmission('Matic')
+      setBpkbStatus('Tersedia')
+    } catch (err) {
+      setDoneMsg(err?.message || 'Gagal mengirim. Coba lagi.')
     } finally {
       setSubmitting(false)
     }
@@ -48,65 +141,173 @@ export function TradeInPage() {
   return (
     <div className="page">
       <h1 className="h1">Trade In</h1>
-      <p className="muted">
-        Form input (tipe mobil lama, tahun) dan tombol inspeksi akan ada di sini.
-      </p>
+      <p className="muted small">Isi data unit yang ingin ditukar tambah.</p>
 
       {doneMsg ? (
-        <div className="alert alert--ok" style={{ marginTop: 12 }}>
+        <div className={`alert ${doneMsg.includes('Gagal') ? 'alert--error' : 'alert--ok'}`} style={{ marginTop: 12 }}>
           {doneMsg}
         </div>
       ) : null}
 
-      <div className="card">
-        <div className="form">
-          <label className="label" htmlFor="tipeLama">
-            Tipe Mobil Lama
+      <div className="card" style={{ marginTop: 12 }}>
+        <form onSubmit={onSubmit} className="form">
+          <label className="label" htmlFor="merk">
+            Merk / Model
           </label>
           <input
-            id="tipeLama"
+            id="merk"
             className="input"
-            placeholder="Contoh: Avanza 1.3"
-            value={tipeMobilLama}
-            onChange={(e) => setTipeMobilLama(e.target.value)}
+            placeholder="Rush S GR Sport"
+            value={merkModel}
+            onChange={(e) => setMerkModel(e.target.value)}
           />
 
-          <label className="label" htmlFor="tahunLama">
+          <label className="label" htmlFor="trans" style={{ marginTop: 10 }}>
+            Type / Transmisi
+          </label>
+          <select
+            id="trans"
+            className="input"
+            value={transmission}
+            onChange={(e) => setTransmission(e.target.value)}
+          >
+            <option value="Manual">Manual</option>
+            <option value="Matic">Matic</option>
+          </select>
+
+          <label className="label" htmlFor="year" style={{ marginTop: 10 }}>
             Tahun
           </label>
           <input
-            id="tahunLama"
+            id="year"
             className="input"
+            placeholder="2020"
             inputMode="numeric"
-            placeholder="Contoh: 2017"
-            value={tahun}
-            onChange={(e) => setTahun(e.target.value.replace(/[^\d]/g, ''))}
+            value={year}
+            onChange={(e) => setYear(e.target.value.replace(/[^\d]/g, ''))}
           />
 
-          <div style={{ display: 'grid', gap: 10 }}>
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={!canSubmit || submitting}
-              onClick={async () => {
-                await onRequestInspeksi()
-                window.open(
-                  buildInspeksiWaUrl({
-                    nomor_inspeksi: waNumbers.nomor_inspeksi || '',
-                    tipe: tipeMobilLama || '-',
-                    tahun: tahun || '-',
-                  }),
-                  '_blank',
-                  'noopener,noreferrer',
-                )
-              }}
-            >
-              {submitting ? 'Mengirim…' : 'INSPEKSI SEKARANG'}
-            </button>
-          </div>
+          <label className="label" htmlFor="color" style={{ marginTop: 10 }}>
+            Warna
+          </label>
+          <input
+            id="color"
+            className="input"
+            placeholder="Putih"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+          />
+
+          <label className="label" htmlFor="km" style={{ marginTop: 10 }}>
+            KM
+          </label>
+          <input
+            id="km"
+            className="input"
+            placeholder="45.000 Km"
+            value={km}
+            onChange={(e) => setKm(e.target.value)}
+          />
+
+          <label className="label" htmlFor="stnk" style={{ marginTop: 10 }}>
+            STNK bulan
+          </label>
+          <input
+            id="stnk"
+            className="input"
+            placeholder="April"
+            value={stnkMonth}
+            onChange={(e) => setStnkMonth(e.target.value)}
+          />
+
+          <label className="label" htmlFor="bpkb" style={{ marginTop: 10 }}>
+            Status BPKB
+          </label>
+          <select
+            id="bpkb"
+            className="input"
+            value={bpkbStatus}
+            onChange={(e) => setBpkbStatus(e.target.value)}
+          >
+            <option value="Tersedia">Tersedia</option>
+            <option value="Tidak Tersedia">Tidak Tersedia</option>
+          </select>
+
+          <label className="label" htmlFor="exp" style={{ marginTop: 10 }}>
+            Ekspektasi harga terendah
+          </label>
+          <input
+            id="exp"
+            className="input"
+            placeholder="Rp (perkiraan)"
+            inputMode="decimal"
+            value={expectLowPrice}
+            onChange={(e) => setExpectLowPrice(e.target.value)}
+          />
+
+          <label className="label" htmlFor="newcar" style={{ marginTop: 10 }}>
+            Model mobil baru
+          </label>
+          <input
+            id="newcar"
+            className="input"
+            placeholder="Innova Zenix HEV"
+            value={newCarModel}
+            onChange={(e) => setNewCarModel(e.target.value)}
+          />
+
+          <button className="btn btn--primary" type="submit" disabled={!canSubmit || submitting} style={{ marginTop: 14 }}>
+            {submitting ? 'Mengirim…' : 'Kirim request'}
+          </button>
+        </form>
+      </div>
+
+      <h2 className="h1" style={{ fontSize: 17, marginTop: 22 }}>
+        Riwayat request
+      </h2>
+      {listErr ? <div className="alert alert--error">{listErr}</div> : null}
+
+      <div className="card" style={{ marginTop: 10, padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ textAlign: 'left' }}>
+                {['Tanggal', 'Unit', 'Status', 'Harga / proses'].map((h) => (
+                  <th key={h} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="muted" style={{ padding: 12 }}>
+                    Belum ada request.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      {formatTs(r.createdAt)}
+                    </td>
+                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      {r.merkModel || r.carType || '-'} · {r.transmission || ''} · {r.year || '-'}
+                    </td>
+                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      {pipelineLabel(r)}
+                    </td>
+                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      {customerTradeInPriceLabel(r)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   )
 }
-

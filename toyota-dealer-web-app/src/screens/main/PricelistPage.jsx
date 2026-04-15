@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useAuth } from '../../state/AuthContext.jsx'
-import { demoCars, formatIdr } from '../../demo/demoData.js'
+import { demoCars, demoContactNumbers, formatIdr } from '../../demo/demoData.js'
 
 function buildSimulationWaUrl({ nomor_sales, namaMobil }) {
   const pesan = `Halo SUTEN, saya ingin SIMULASI KREDIT untuk ${namaMobil}. Mohon info skema dan estimasi cicilan.`
@@ -10,8 +9,7 @@ function buildSimulationWaUrl({ nomor_sales, namaMobil }) {
 }
 
 export function PricelistPage() {
-  const { userSnapshot } = useAuth()
-  const waNumbers = userSnapshot?.waNumbers || {}
+  const waNumbers = demoContactNumbers
 
   const [selectedId, setSelectedId] = useState(demoCars[0]?.id || '')
   const selectedCar = useMemo(
