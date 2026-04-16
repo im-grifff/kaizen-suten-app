@@ -27,7 +27,7 @@ export function AppLayout() {
   const showCustomers = isRoot || role === 'supervisor' || role === 'aftersales'
   const showPricelist = isRoot || role === 'supervisor'
   const showTshop = isRoot || role === 'aftersales'
-  const showTradein = isRoot || role === 'tradein'
+  const showTradein = isRoot || role === 'tradein' || role === 'supervisor' || role === 'supervisor'
 
   return (
     <div style={{ minHeight: '100svh', display: 'grid', gridTemplateColumns: '260px 1fr' }}>

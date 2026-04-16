@@ -44,6 +44,7 @@ export function TradeInPage() {
   const [bpkbStatus, setBpkbStatus] = useState('Tersedia')
   const [expectLowPrice, setExpectLowPrice] = useState('')
   const [newCarModel, setNewCarModel] = useState('')
+  const [salesName, setSalesName] = useState('')
 
   const [rows, setRows] = useState([])
   const [listErr, setListErr] = useState('')
@@ -100,6 +101,7 @@ export function TradeInPage() {
       bpkbStatus,
       expectLowPrice: expectLowPrice.trim(),
       newCarModel: newCarModel.trim(),
+      salesName: salesName.trim() || '',
       carType: `${merkModel.trim()} ${transmission}`.trim(),
     }
 
@@ -129,6 +131,7 @@ export function TradeInPage() {
       setStnkMonth('')
       setExpectLowPrice('')
       setNewCarModel('')
+      setSalesName('')
       setTransmission('Matic')
       setBpkbStatus('Tersedia')
     } catch (err) {
@@ -256,6 +259,18 @@ export function TradeInPage() {
             onChange={(e) => setNewCarModel(e.target.value)}
           />
 
+          <label className="label" htmlFor="sales" style={{ marginTop: 10 }}>
+            Sales <span className="muted small">(opsional)</span>
+          </label>
+          <input
+            id="sales"
+            className="input"
+            placeholder="Nama sales penanggung jawab"
+            value={salesName}
+            onChange={(e) => setSalesName(e.target.value)}
+            autoComplete="off"
+          />
+
           <button className="btn btn--primary" type="submit" disabled={!canSubmit || submitting} style={{ marginTop: 14 }}>
             {submitting ? 'Mengirim…' : 'Kirim request'}
           </button>
@@ -272,7 +287,7 @@ export function TradeInPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ textAlign: 'left' }}>
-                {['Tanggal', 'Unit', 'Status', 'Harga / proses'].map((h) => (
+                {['Tanggal', 'Unit', 'Sales', 'Status', 'Harga / proses'].map((h) => (
                   <th key={h} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
                     {h}
                   </th>
@@ -282,7 +297,7 @@ export function TradeInPage() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="muted" style={{ padding: 12 }}>
+                  <td colSpan={5} className="muted" style={{ padding: 12 }}>
                     Belum ada request.
                   </td>
                 </tr>
@@ -294,6 +309,9 @@ export function TradeInPage() {
                     </td>
                     <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                       {r.merkModel || r.carType || '-'} · {r.transmission || ''} · {r.year || '-'}
+                    </td>
+                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      {String(r.salesName || '').trim() || '—'}
                     </td>
                     <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                       {pipelineLabel(r)}

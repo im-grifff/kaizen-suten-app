@@ -56,7 +56,7 @@ export default function App() {
           <Route
             path="tradein-requests"
             element={
-              <RequireRole allow={['tradein']}>
+              <RequireRole allow={['tradein', 'supervisor']}>
                 <TradeInRequestsPage />
               </RequireRole>
             }

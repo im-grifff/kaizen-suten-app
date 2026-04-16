@@ -22,14 +22,21 @@ function deriveTradeinStage(r) {
   return 'new'
 }
 
-function tradeinCounts(rows) {
-  let newCount = 0
-  let processed = 0
+const TRADEIN_PIE_STAGES = [
+  { id: 'new', label: 'New', color: '#3b82f6' },
+  { id: 'contacted', label: 'Contacted', color: '#8b5cf6' },
+  { id: 'inspected', label: 'Inspected', color: '#f59e0b' },
+  { id: 'dealing', label: 'Dealing', color: '#22c55e' },
+  { id: 'cancel', label: 'Cancel', color: '#ef4444' },
+]
+
+function tradeinCountsByStage(rows) {
+  const c = { new: 0, contacted: 0, inspected: 0, dealing: 0, cancel: 0 }
   for (const r of rows) {
-    if (deriveTradeinStage(r) === 'new') newCount += 1
-    else processed += 1
+    const s = deriveTradeinStage(r)
+    if (Object.prototype.hasOwnProperty.call(c, s)) c[s] += 1
   }
-  return { request: newCount, contacted: processed }
+  return c
 }
 
 function formatTs(ts) {
@@ -37,51 +44,53 @@ function formatTs(ts) {
   return '-'
 }
 
-function TradeInPie({ request, contacted }) {
-  const total = request + contacted
-  const requestPct = total ? (request / total) * 100 : 0
+function TradeInPie({ counts }) {
+  const total = TRADEIN_PIE_STAGES.reduce((sum, { id }) => sum + (counts[id] || 0), 0)
+
+  let cumPct = 0
+  const gradientStops =
+    total > 0
+      ? TRADEIN_PIE_STAGES.map(({ id, color }) => {
+          const n = counts[id] || 0
+          const pct = (n / total) * 100
+          const start = cumPct
+          cumPct += pct
+          return `${color} ${start}% ${cumPct}%`
+        }).join(', ')
+      : null
+
   return (
     <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
       <div
-        title={`Request: ${request}, Contacted: ${contacted}`}
+        title={TRADEIN_PIE_STAGES.map(({ id, label }) => `${label}: ${counts[id] || 0}`).join(' · ')}
         style={{
-          width: 140,
-          height: 140,
+          width: 160,
+          height: 160,
           borderRadius: '50%',
           background:
             total === 0
               ? 'var(--border, #333)'
-              : `conic-gradient(var(--accent, #3b82f6) 0 ${requestPct}%, var(--muted-fg, #64748b) ${requestPct}% 100%)`,
+              : `conic-gradient(${gradientStops})`,
           boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)',
         }}
       />
       <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 2,
-              background: 'var(--accent, #3b82f6)',
-            }}
-          />
-          <span>
-            Request: <strong>{request}</strong>
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 2,
-              background: 'var(--muted-fg, #64748b)',
-            }}
-          />
-          <span>
-            Contacted: <strong>{contacted}</strong>
-          </span>
-        </div>
+        {TRADEIN_PIE_STAGES.map(({ id, label, color }) => (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 2,
+                background: color,
+                flexShrink: 0,
+              }}
+            />
+            <span>
+              {label}: <strong>{counts[id] || 0}</strong>
+            </span>
+          </div>
+        ))}
         {total === 0 ? <div className="muted">Belum ada data trade in.</div> : null}
       </div>
     </div>
@@ -122,10 +131,7 @@ export function DashboardHome() {
     return () => unsub?.()
   }, [showRegist])
 
-  const { request: tiRequest, contacted: tiContacted } = useMemo(
-    () => tradeinCounts(tradeinRows),
-    [tradeinRows],
-  )
+  const tiStageCounts = useMemo(() => tradeinCountsByStage(tradeinRows), [tradeinRows])
 
   const sortedRegRows = useMemo(() => {
     const copy = [...regRows]
@@ -149,9 +155,12 @@ export function DashboardHome() {
 
       {showTradeinPie ? (
         <div className="card" style={{ marginTop: 16, padding: 16 }}>
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>Trade In — ringkasan status</div>
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>Trade In — ringkasan per pipeline</div>
+          <div className="muted" style={{ marginBottom: 10, fontSize: 12 }}>
+            New, Contacted, Inspected, Dealing, Cancel (sama dengan tab Trade In Requests).
+          </div>
           {tradeinErr ? <div className="muted" style={{ color: 'salmon' }}>{tradeinErr}</div> : null}
-          <TradeInPie request={tiRequest} contacted={tiContacted} />
+          <TradeInPie counts={tiStageCounts} />
         </div>
       ) : null}
 

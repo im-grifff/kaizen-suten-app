@@ -113,7 +113,7 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
         && get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey
           == request.resource.data.customerWaKey;
-      allow update: if isRoot() || roleIs('tradein');
+      allow update: if isRoot() || roleIn(['tradein', 'supervisor']);
     }
 
     match /registration_requests/{id} {

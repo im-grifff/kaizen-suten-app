@@ -47,8 +47,12 @@ function unitSummary(r) {
   return [mm, tr, col, yr].filter(Boolean).join(' · ')
 }
 
+function rowSalesName(r) {
+  return String(r.salesName || '').trim()
+}
+
 export function TradeInRequestsPage() {
-  const { user } = useAuth()
+  const { user, role } = useAuth()
   const [rows, setRows] = useState([])
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('new')
@@ -110,6 +114,13 @@ export function TradeInRequestsPage() {
   /** Kolom harga fix + alasan hanya dari tab Inspected ke bawah. */
   const showFixAndReason = tab === 'inspected' || tab === 'dealing' || tab === 'cancel'
   const estimateEditable = tab === 'new'
+
+  const isTradeInOnly = role === 'tradein'
+  const isRootOrSupervisor = role === 'root' || role === 'supervisor'
+
+  function tradeinHidesPipelineActions(r) {
+    return isTradeInOnly && rowSalesName(r).length > 0
+  }
 
   async function persistEstimate(id) {
     const r = rowById.get(id)
@@ -224,6 +235,31 @@ export function TradeInRequestsPage() {
     setErr('')
   }
 
+  /** Root / Supervisor: hubungi sales internal (nomor di-prompt). */
+  function chatWaToInternalSales(r) {
+    const raw = window.prompt('Nomor WhatsApp sales (628…)', '')
+    const phone = toDigits(raw || '')
+    if (phone.length < 10) {
+      setErr('Nomor WhatsApp sales tidak valid.')
+      return
+    }
+    setErr('')
+    const salesFromCustomer = rowSalesName(r)
+    const stageLabel =
+      tab === 'new' ? 'New' : tab === 'contacted' ? 'Contacted' : tab === 'inspected' ? 'Inspected' : tab
+    const lines = [
+      `Halo${salesFromCustomer ? ` ${salesFromCustomer}` : ''},`,
+      '',
+      `Info trade-in — tab admin: ${stageLabel}`,
+      `Customer: ${r.customerName || '-'}`,
+      `WA customer: ${getCustomerPhone(r) || '-'}`,
+      `Sales (diisi customer): ${salesFromCustomer || '-'}`,
+      `Unit: ${unitSummary(r)}`,
+      `Estimasi (min–max): ${estimateRangeText(r.id)}`,
+    ]
+    window.open(buildWaApiUrl(phone, lines.join('\n')), '_blank', 'noopener,noreferrer')
+  }
+
   async function setStage(id, adminStage, extra = {}) {
     const status =
       adminStage === 'new' ? 'new' : adminStage === 'cancel' ? 'cancelled' : 'contacted'
@@ -294,6 +330,7 @@ export function TradeInRequestsPage() {
                   'WA',
                   'Unit',
                   'Detail',
+                  'Sales',
                   'Estimasi',
                   ...(showFixAndReason ? ['Harga fix', 'Alasan'] : []),
                   'Aksi',
@@ -307,7 +344,7 @@ export function TradeInRequestsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={showFixAndReason ? 9 : 7} className="muted" style={{ padding: 12 }}>
+                  <td colSpan={showFixAndReason ? 10 : 8} className="muted" style={{ padding: 12 }}>
                     Tidak ada data di tab ini.
                   </td>
                 </tr>
@@ -342,6 +379,10 @@ export function TradeInRequestsPage() {
                       </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', maxWidth: 220 }}>
                         {detail || '-'}
+                      </td>
+
+                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {rowSalesName(r) || '—'}
                       </td>
 
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -455,75 +496,114 @@ export function TradeInRequestsPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
                           {tab === 'new' ? (
                             <>
-                              <button type="button" className="btn btnPrimary" onClick={() => chatNew(r)}>
-                                Chat WhatsApp
-                              </button>
-                              <button
-                                type="button"
-                                className="btn"
-                                disabled={!hasEstimate(r.id)}
-                                onClick={() => setStage(r.id, 'contacted')}
-                              >
-                                Pindah ke Contacted
-                              </button>
-                              <button
-                                type="button"
-                                className="btn"
-                                onClick={() => {
-                                  const reason =
-                                    window.prompt('Alasan pembatalan:', '')?.trim() || 'Dibatalkan'
-                                  void setStage(r.id, 'cancel', { cancelReason: reason })
-                                }}
-                              >
-                                Batalkan
-                              </button>
+                              {isRootOrSupervisor ? (
+                                <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
+                                  WA ke sales
+                                </button>
+                              ) : null}
+                              {!tradeinHidesPipelineActions(r) ? (
+                                <>
+                                  <button type="button" className="btn btnPrimary" onClick={() => chatNew(r)}>
+                                    Chat WhatsApp
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    disabled={!hasEstimate(r.id)}
+                                    onClick={() => setStage(r.id, 'contacted')}
+                                  >
+                                    Pindah ke Contacted
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => {
+                                      const reason =
+                                        window.prompt('Alasan pembatalan:', '')?.trim() || 'Dibatalkan'
+                                      void setStage(r.id, 'cancel', { cancelReason: reason })
+                                    }}
+                                  >
+                                    Batalkan
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="muted" style={{ fontSize: 11 }}>
+                                  Hanya isi estimasi/harga
+                                </span>
+                              )}
                             </>
                           ) : null}
                           {tab === 'contacted' ? (
                             <>
-                              <button type="button" className="btn btnPrimary" onClick={() => chatNew(r)}>
-                                Chat WhatsApp
-                              </button>
-                              <button type="button" className="btn" onClick={() => setStage(r.id, 'inspected')}>
-                                Pindah ke Inspected
-                              </button>
-                              <button
-                                type="button"
-                                className="btn"
-                                onClick={() => {
-                                  const reason =
-                                    window.prompt('Alasan pembatalan:', '')?.trim() || 'Dibatalkan'
-                                  void setStage(r.id, 'cancel', { cancelReason: reason })
-                                }}
-                              >
-                                Batalkan
-                              </button>
+                              {isRootOrSupervisor ? (
+                                <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
+                                  WA ke sales
+                                </button>
+                              ) : null}
+                              {!tradeinHidesPipelineActions(r) ? (
+                                <>
+                                  <button type="button" className="btn btnPrimary" onClick={() => chatNew(r)}>
+                                    Chat WhatsApp
+                                  </button>
+                                  <button type="button" className="btn" onClick={() => setStage(r.id, 'inspected')}>
+                                    Pindah ke Inspected
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => {
+                                      const reason =
+                                        window.prompt('Alasan pembatalan:', '')?.trim() || 'Dibatalkan'
+                                      void setStage(r.id, 'cancel', { cancelReason: reason })
+                                    }}
+                                  >
+                                    Batalkan
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="muted" style={{ fontSize: 11 }}>
+                                  Hanya isi estimasi/harga
+                                </span>
+                              )}
                             </>
                           ) : null}
                           {tab === 'inspected' ? (
                             <>
-                              <button type="button" className="btn btnPrimary" onClick={() => chatInspected(r)}>
-                                Chat WhatsApp
-                              </button>
-                              <button
-                                type="button"
-                                className="btn"
-                                disabled={!toDigits(fixedDraft[r.id] || '').length}
-                                onClick={() => setStage(r.id, 'dealing')}
-                              >
-                                Pindah ke Dealing
-                              </button>
-                              <button
-                                type="button"
-                                className="btn"
-                                onClick={() =>
-                                  setStage(r.id, 'cancel', {
-                                    cancelReason: cancelDraft[r.id] || 'Dibatalkan',
-                                  })
-                                }
-                              >
-                                Batalkan
-                              </button>
+                              {isRootOrSupervisor ? (
+                                <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
+                                  WA ke sales
+                                </button>
+                              ) : null}
+                              {!tradeinHidesPipelineActions(r) ? (
+                                <>
+                                  <button type="button" className="btn btnPrimary" onClick={() => chatInspected(r)}>
+                                    Chat WhatsApp
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    disabled={!toDigits(fixedDraft[r.id] || '').length}
+                                    onClick={() => setStage(r.id, 'dealing')}
+                                  >
+                                    Pindah ke Dealing
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() =>
+                                      setStage(r.id, 'cancel', {
+                                        cancelReason: cancelDraft[r.id] || 'Dibatalkan',
+                                      })
+                                    }
+                                  >
+                                    Batalkan
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="muted" style={{ fontSize: 11 }}>
+                                  Hanya isi estimasi/harga
+                                </span>
+                              )}
                             </>
                           ) : null}
                           {tab === 'dealing' ? (
