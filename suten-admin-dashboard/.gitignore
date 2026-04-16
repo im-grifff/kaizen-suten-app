@@ -19,6 +19,9 @@ dist-ssr
 *serviceAccount*.json
 *firebase-adminsdk*.json
 
+# Daftar email/role untuk set-claims batch (salin dari .example jika perlu)
+tools/admin-claims.local.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

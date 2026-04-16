@@ -13,7 +13,8 @@
     "firebase:deploy:indexes": "firebase deploy --only firestore:indexes",
     "tools:dedupe-users": "node tools/dedupe-users.mjs",
     "tools:rehydrate-customers": "node tools/rehydrate-customer-profiles.mjs",
-    "tools:migrate-plates-compact": "node tools/migrate-plates-compact.mjs"
+    "tools:migrate-plates-compact": "node tools/migrate-plates-compact.mjs",
+    "tools:set-claims-batch": "node tools/set-claims-batch.mjs"
   },
   "dependencies": {
     "firebase": "^12.12.0",
