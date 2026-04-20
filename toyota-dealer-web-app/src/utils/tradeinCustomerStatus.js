@@ -1,8 +1,8 @@
 import { formatIdr } from '../demo/demoData.js'
 
-function estimatePresent(r) {
-  const low = r.estimateLow
-  const high = r.estimateHigh
+export function estimatePresent(r) {
+  const low = r?.estimateLow
+  const high = r?.estimateHigh
   return (low != null && Number(low) > 0) || (high != null && Number(high) > 0)
 }
 

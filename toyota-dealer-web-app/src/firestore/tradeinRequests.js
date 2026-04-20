@@ -1,10 +1,12 @@
 import {
   addDoc,
   collection,
+  doc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from 'firebase/firestore'
 import { db } from '../firebase/firebase.js'
@@ -35,5 +37,18 @@ export async function createTradeinRequest(payload) {
     adminStage: 'new',
     status: 'new',
     createdAt: serverTimestamp(),
+  })
+}
+
+/**
+ * Customer menekan "Request Inspeksi" pada riwayat trade-in.
+ * Memindahkan dokumen dari stage `new` ke `contacted` pada admin dashboard.
+ */
+export async function customerRequestInspection(id) {
+  const ref = doc(db, 'tradein_requests', id)
+  return updateDoc(ref, {
+    adminStage: 'contacted',
+    status: 'contacted',
+    customerRequestedInspectionAt: serverTimestamp(),
   })
 }

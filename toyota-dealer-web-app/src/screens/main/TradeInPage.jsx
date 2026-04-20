@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
-import { createTradeinRequest, listenTradeinRequestsForWa } from '../../firestore/tradeinRequests.js'
-import { customerTradeInPriceLabel, pipelineLabel } from '../../utils/tradeinCustomerStatus.js'
+import {
+  createTradeinRequest,
+  customerRequestInspection,
+  listenTradeinRequestsForWa,
+} from '../../firestore/tradeinRequests.js'
+import {
+  customerTradeInPriceLabel,
+  deriveTradeinCustomerStage,
+  estimatePresent,
+  pipelineLabel,
+} from '../../utils/tradeinCustomerStatus.js'
 
 const DEMO_TRADEIN_KEY = 'demo_tradein_history_v1'
 
@@ -50,6 +59,7 @@ export function TradeInPage() {
   const [listErr, setListErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [doneMsg, setDoneMsg] = useState('')
+  const [requestingId, setRequestingId] = useState('')
 
   const refreshDemo = useCallback(() => {
     if (demoMode && customerWaKey) setRows(loadDemoHistory(customerWaKey))
@@ -138,6 +148,37 @@ export function TradeInPage() {
       setDoneMsg(err?.message || 'Gagal mengirim. Coba lagi.')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function onRequestInspection(row) {
+    if (!row?.id) return
+    setDoneMsg('')
+    setRequestingId(row.id)
+    try {
+      if (demoMode) {
+        const current = loadDemoHistory(customerWaKey)
+        const next = current.map((r) =>
+          r.id === row.id
+            ? {
+                ...r,
+                adminStage: 'contacted',
+                status: 'contacted',
+                customerRequestedInspectionAt: new Date().toISOString(),
+              }
+            : r,
+        )
+        saveDemoHistory(customerWaKey, next)
+        setRows(next)
+        setDoneMsg('Request inspeksi terkirim ke admin.')
+      } else {
+        await customerRequestInspection(row.id)
+        setDoneMsg('Request inspeksi terkirim ke admin.')
+      }
+    } catch (err) {
+      setDoneMsg(err?.message || 'Gagal mengirim request inspeksi.')
+    } finally {
+      setRequestingId('')
     }
   }
 
@@ -287,7 +328,7 @@ export function TradeInPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ textAlign: 'left' }}>
-                {['Tanggal', 'Unit', 'Sales', 'Status', 'Harga / proses'].map((h) => (
+                {['Tanggal', 'Unit', 'Sales', 'Status', 'Harga / proses', 'Aksi'].map((h) => (
                   <th key={h} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
                     {h}
                   </th>
@@ -297,30 +338,52 @@ export function TradeInPage() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="muted" style={{ padding: 12 }}>
+                  <td colSpan={6} className="muted" style={{ padding: 12 }}>
                     Belum ada request.
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => (
-                  <tr key={r.id}>
-                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      {formatTs(r.createdAt)}
-                    </td>
-                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      {r.merkModel || r.carType || '-'} · {r.transmission || ''} · {r.year || '-'}
-                    </td>
-                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      {String(r.salesName || '').trim() || '—'}
-                    </td>
-                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      {pipelineLabel(r)}
-                    </td>
-                    <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      {customerTradeInPriceLabel(r)}
-                    </td>
-                  </tr>
-                ))
+                rows.map((r) => {
+                  const stage = deriveTradeinCustomerStage(r)
+                  const canRequestInspection = stage === 'new' && estimatePresent(r)
+                  const isRequesting = requestingId === r.id
+                  return (
+                    <tr key={r.id}>
+                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {formatTs(r.createdAt)}
+                      </td>
+                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {r.merkModel || r.carType || '-'} · {r.transmission || ''} · {r.year || '-'}
+                      </td>
+                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {String(r.salesName || '').trim() || '—'}
+                      </td>
+                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {pipelineLabel(r)}
+                      </td>
+                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {customerTradeInPriceLabel(r)}
+                      </td>
+                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {canRequestInspection ? (
+                          <button
+                            type="button"
+                            className="btn btn--primary"
+                            style={{ padding: '6px 10px', fontSize: 12 }}
+                            disabled={isRequesting}
+                            onClick={() => onRequestInspection(r)}
+                          >
+                            {isRequesting ? 'Mengirim…' : 'Request Inspeksi'}
+                          </button>
+                        ) : (
+                          <span className="muted" style={{ fontSize: 11 }}>
+                            —
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>

@@ -114,6 +114,21 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey
           == request.resource.data.customerWaKey;
       allow update: if isRoot() || roleIn(['tradein', 'supervisor']);
+      // Customer boleh menekan "Request Inspeksi" dari app-nya:
+      // hanya untuk memindahkan stage `new` → `contacted` dan hanya jika estimasi admin sudah ada.
+      allow update: if isCustomerApp()
+        && exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
+        && resource.data.customerWaKey
+          == get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey
+        && (resource.data.adminStage == 'new' || !('adminStage' in resource.data))
+        && request.resource.data.adminStage == 'contacted'
+        && request.resource.data.status == 'contacted'
+        && (
+          (resource.data.estimateLow is number && resource.data.estimateLow > 0)
+          || (resource.data.estimateHigh is number && resource.data.estimateHigh > 0)
+        )
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['adminStage', 'status', 'customerRequestedInspectionAt']);
     }
 
     match /registration_requests/{id} {
