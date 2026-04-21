@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../state/AuthContext.jsx'
 
 const items = [
   { to: '/app', label: 'Home', end: true },
@@ -8,8 +9,18 @@ const items = [
 ]
 
 export function BottomNav() {
+  const { logout } = useAuth()
+
   return (
     <nav className="bottomNav" aria-label="Main navigation">
+      <button
+        type="button"
+        className="bottomNav__item bottomNav__item--logout"
+        onClick={() => void logout()}
+        aria-label="Keluar"
+      >
+        <span className="bottomNav__label">Keluar</span>
+      </button>
       {items.map((it) => (
         <NavLink
           key={it.to}

@@ -101,6 +101,20 @@
   user-select: none;
 }
 
+.bottomNav__item--logout {
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: #ff8a8a;
+}
+
+.bottomNav__item--logout:hover,
+.bottomNav__item--logout:focus-visible {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.08);
+  border-color: rgba(255, 107, 107, 0.25);
+}
+
 .bottomNav__item--primary {
   transform: scale(1.1);
 }

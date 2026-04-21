@@ -1,7 +1,7 @@
 import { useAuth } from '../state/AuthContext.jsx'
 
 export function TopBar() {
-  const { customerDisplayName, logout } = useAuth()
+  const { customerDisplayName } = useAuth()
 
   return (
     <header className="topbar">
@@ -12,12 +12,9 @@ export function TopBar() {
         </div>
       </div>
       <div className="topbar__right">
-        <span className="topbar__meta" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span className="topbar__meta" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {customerDisplayName || ''}
         </span>
-        <button type="button" className="btn btn--small btn--ghost" onClick={() => void logout()}>
-          Keluar
-        </button>
       </div>
     </header>
   )
