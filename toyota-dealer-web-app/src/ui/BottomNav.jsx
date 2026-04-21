@@ -13,14 +13,6 @@ export function BottomNav() {
 
   return (
     <nav className="bottomNav" aria-label="Main navigation">
-      <button
-        type="button"
-        className="bottomNav__item bottomNav__item--logout"
-        onClick={() => void logout()}
-        aria-label="Keluar"
-      >
-        <span className="bottomNav__label">Keluar</span>
-      </button>
       {items.map((it) => (
         <NavLink
           key={it.to}
@@ -33,6 +25,14 @@ export function BottomNav() {
           <span className="bottomNav__label">{it.label}</span>
         </NavLink>
       ))}
+      <button
+        type="button"
+        className="bottomNav__item bottomNav__item--logout"
+        onClick={() => void logout()}
+        aria-label="Keluar"
+      >
+        <span className="bottomNav__label">Keluar</span>
+      </button>
     </nav>
   )
 }
