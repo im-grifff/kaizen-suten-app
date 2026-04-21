@@ -79,6 +79,8 @@ export function AppLayout() {
           borderRight: '1px solid var(--border)',
           background: 'rgba(11, 18, 32, 0.72)',
           backdropFilter: 'blur(10px)',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <div style={{ fontWeight: 900, letterSpacing: 0.2 }}>SUTEN Admin</div>
@@ -97,8 +99,8 @@ export function AppLayout() {
           {showTradein ? <NavItem to="/app/tradein-requests" label="Trade In Requests" /> : null}
         </nav>
 
-        <div style={{ marginTop: 'auto' }}>
-          <button className="btn" style={{ width: '100%', marginTop: 16 }} onClick={onLogout}>
+        <div style={{ marginTop: 'auto', paddingTop: 16 }}>
+          <button className="btn" style={{ width: '100%' }} onClick={onLogout}>
             Logout
           </button>
         </div>
