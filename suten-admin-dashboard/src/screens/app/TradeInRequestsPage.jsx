@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import * as XLSX from 'xlsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { listenTradeinRequests, updateTradeinRequest } from '../../firestore/tradeinRequests.js'
 import { normalizePlate } from '../../utils/plateFormat.js'
@@ -9,7 +10,16 @@ const TABS = [
   { id: 'inspected', label: 'Inspected' },
   { id: 'dealing', label: 'Dealing' },
   { id: 'cancel', label: 'Cancel' },
+  { id: 'all', label: 'All' },
 ]
+
+const STAGE_LABELS = {
+  new: 'New',
+  contacted: 'Contacted',
+  inspected: 'Inspected',
+  dealing: 'Dealing',
+  cancel: 'Cancel',
+}
 
 function deriveAdminStage(r) {
   if (r.adminStage) return r.adminStage
@@ -108,17 +118,28 @@ export function TradeInRequestsPage() {
   }, [rows])
 
   const filtered = useMemo(() => {
+    if (tab === 'all') return rows
     return rows.filter((r) => deriveAdminStage(r) === tab)
   }, [rows, tab])
 
-  /** Kolom harga fix + alasan hanya dari tab Inspected ke bawah. */
-  const showFixAndReason = tab === 'inspected' || tab === 'dealing' || tab === 'cancel'
+  /** Kolom harga fix + alasan hanya dari tab Inspected ke bawah, atau tab All (read-only). */
+  const showFixAndReason =
+    tab === 'inspected' || tab === 'dealing' || tab === 'cancel' || tab === 'all'
   const estimateEditable = tab === 'new'
+  const isAllTab = tab === 'all'
 
   const isTradeInOnly = role === 'tradein'
   const isRootOrSupervisor = role === 'root' || role === 'supervisor'
 
   function tradeinHidesPipelineActions(r) {
+    return isTradeInOnly && rowSalesName(r).length > 0
+  }
+
+  /**
+   * Trade-in admin (otozentrum) tidak boleh melihat nomor WA customer
+   * jika customer mengisi nama sales. Role lain tetap melihat normal.
+   */
+  function shouldHideCustomerWaForViewer(r) {
     return isTradeInOnly && rowSalesName(r).length > 0
   }
 
@@ -161,6 +182,41 @@ export function TradeInRequestsPage() {
     } finally {
       setSavingId('')
     }
+  }
+
+  function buildExcelRow(r) {
+    return {
+      Created: r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('id-ID') : '',
+      Stage: STAGE_LABELS[deriveAdminStage(r)] || deriveAdminStage(r),
+      Customer: r.customerName || '',
+      WA: shouldHideCustomerWaForViewer(r) ? '' : getCustomerPhone(r) || '',
+      'Plat Nomor': r.plateNumber || normalizePlate(r.plateKey || '') || '',
+      'Merk / Model': r.merkModel || r.carType || '',
+      Transmisi: r.transmission || '',
+      Tahun: r.year || '',
+      Warna: r.color || '',
+      KM: r.km || '',
+      'STNK Bulan': r.stnkMonth || '',
+      'Status BPKB': r.bpkbStatus || '',
+      'Ekspektasi Terendah': r.expectLowPrice || '',
+      'Mobil Baru': r.newCarModel || '',
+      Sales: rowSalesName(r),
+      'Estimasi Min': r.estimateLow != null ? Number(r.estimateLow) : '',
+      'Estimasi Max': r.estimateHigh != null ? Number(r.estimateHigh) : '',
+      'Harga Fix': r.fixedPrice != null ? Number(r.fixedPrice) : '',
+      'Alasan Batal': r.cancelReason || '',
+    }
+  }
+
+  function exportToExcel() {
+    if (!filtered.length) return
+    const data = filtered.map(buildExcelRow)
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    const sheetName = `Trade-In ${TABS.find((t) => t.id === tab)?.label || tab}`.slice(0, 31)
+    XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    const stamp = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `tradein-${tab}-${stamp}.xlsx`)
   }
 
   function estimateRangeText(id) {
@@ -306,18 +362,40 @@ export function TradeInRequestsPage() {
           Signed in as: {user?.email || user?.uid}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className={`btn ${tab === t.id ? 'btnPrimary' : ''}`}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label} (
-              {rows.filter((r) => deriveAdminStage(r) === t.id).length})
-            </button>
-          ))}
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            flexWrap: 'wrap',
+            marginTop: 12,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {TABS.map((t) => {
+              const count = t.id === 'all' ? rows.length : rows.filter((r) => deriveAdminStage(r) === t.id).length
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`btn ${tab === t.id ? 'btnPrimary' : ''}`}
+                  onClick={() => setTab(t.id)}
+                >
+                  {t.label} ({count})
+                </button>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={exportToExcel}
+            disabled={!filtered.length}
+            title="Download data tab ini ke Excel (.xlsx)"
+          >
+            Download Excel
+          </button>
         </div>
 
         <div style={{ overflowX: 'auto', marginTop: 14 }}>
@@ -328,12 +406,14 @@ export function TradeInRequestsPage() {
                   'Created',
                   'Customer',
                   'WA',
+                  'Plat',
                   'Unit',
                   'Detail',
                   'Sales',
+                  ...(isAllTab ? ['Stage'] : []),
                   'Estimasi',
                   ...(showFixAndReason ? ['Harga fix', 'Alasan'] : []),
-                  'Aksi',
+                  ...(!isAllTab ? ['Aksi'] : []),
                 ].map((h) => (
                   <th key={h} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
                     {h}
@@ -344,14 +424,20 @@ export function TradeInRequestsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={showFixAndReason ? 10 : 8} className="muted" style={{ padding: 12 }}>
+                  <td
+                    colSpan={
+                      8 + (showFixAndReason ? 2 : 0) + (isAllTab ? 1 : 0) + (!isAllTab ? 1 : 0)
+                    }
+                    className="muted"
+                    style={{ padding: 12 }}
+                  >
                     Tidak ada data di tab ini.
                   </td>
                 </tr>
               ) : (
                 filtered.map((r) => {
                   const e = estimates[r.id] || { low: '', high: '' }
-                  const plate = normalizePlate(r.plateNumber || '')
+                  const plateRaw = r.plateNumber || normalizePlate(r.plateKey || '') || ''
                   const detail = [
                     r.km ? `KM ${r.km}` : '',
                     r.stnkMonth ? `STNK ${r.stnkMonth}` : '',
@@ -362,6 +448,9 @@ export function TradeInRequestsPage() {
                     .filter(Boolean)
                     .join(' · ')
 
+                  const stageOfRow = deriveAdminStage(r)
+                  const hideWa = shouldHideCustomerWaForViewer(r)
+
                   return (
                     <tr key={r.id}>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}>
@@ -371,11 +460,22 @@ export function TradeInRequestsPage() {
                         {r.customerName || '-'}
                       </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }} className="mono">
-                        {getCustomerPhone(r) || '-'}
+                        {hideWa ? (
+                          <span className="muted" title="Disembunyikan: customer mencantumkan sales">
+                            Tersembunyi
+                          </span>
+                        ) : (
+                          getCustomerPhone(r) || '-'
+                        )}
+                      </td>
+                      <td
+                        className="mono"
+                        style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}
+                      >
+                        {plateRaw || '-'}
                       </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         {unitSummary(r)}
-                        {plate ? <div className="muted">Plat (legacy): {plate}</div> : null}
                       </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', maxWidth: 220 }}>
                         {detail || '-'}
@@ -384,6 +484,12 @@ export function TradeInRequestsPage() {
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         {rowSalesName(r) || '—'}
                       </td>
+
+                      {isAllTab ? (
+                        <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          {STAGE_LABELS[stageOfRow] || stageOfRow}
+                        </td>
+                      ) : null}
 
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -439,7 +545,7 @@ export function TradeInRequestsPage() {
 
                       {showFixAndReason ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                          {tab === 'dealing' || tab === 'cancel' ? (
+                          {tab === 'dealing' || tab === 'cancel' || isAllTab ? (
                             <strong>
                               {r.fixedPrice != null && Number(r.fixedPrice) > 0
                                 ? `Rp${formatIdrCompact(String(r.fixedPrice))}`
@@ -466,32 +572,41 @@ export function TradeInRequestsPage() {
 
                       {showFixAndReason ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                          <textarea
-                            className="input"
-                            style={{ width: 160, minHeight: 48, resize: 'vertical' }}
-                            placeholder="Alasan batal"
-                            readOnly={tab === 'dealing'}
-                            value={cancelDraft[r.id] ?? ''}
-                            onChange={
-                              tab !== 'dealing'
-                                ? (ev) =>
-                                    setCancelDraft((s) => ({ ...s, [r.id]: ev.target.value }))
-                                : undefined
-                            }
-                          />
-                          {tab !== 'dealing' ? (
-                            <button
-                              type="button"
-                              className="btn"
-                              style={{ marginTop: 4 }}
-                              onClick={() => persistCancelReason(r.id)}
-                            >
-                              Simpan alasan
-                            </button>
-                          ) : null}
+                          {isAllTab ? (
+                            <span className="muted" style={{ whiteSpace: 'pre-wrap' }}>
+                              {String(r.cancelReason || '').trim() || '—'}
+                            </span>
+                          ) : (
+                            <>
+                              <textarea
+                                className="input"
+                                style={{ width: 160, minHeight: 48, resize: 'vertical' }}
+                                placeholder="Alasan batal"
+                                readOnly={tab === 'dealing'}
+                                value={cancelDraft[r.id] ?? ''}
+                                onChange={
+                                  tab !== 'dealing'
+                                    ? (ev) =>
+                                        setCancelDraft((s) => ({ ...s, [r.id]: ev.target.value }))
+                                    : undefined
+                                }
+                              />
+                              {tab !== 'dealing' ? (
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  style={{ marginTop: 4 }}
+                                  onClick={() => persistCancelReason(r.id)}
+                                >
+                                  Simpan alasan
+                                </button>
+                              ) : null}
+                            </>
+                          )}
                         </td>
                       ) : null}
 
+                      {!isAllTab ? (
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
                           {tab === 'new' ? (
@@ -613,6 +728,7 @@ export function TradeInRequestsPage() {
                           ) : null}
                         </div>
                       </td>
+                      ) : null}
                     </tr>
                   )
                 })

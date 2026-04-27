@@ -3,6 +3,7 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import {
   createTradeinRequest,
   customerRequestInspection,
+  DuplicatePlateError,
   listenTradeinRequestsForWa,
 } from '../../firestore/tradeinRequests.js'
 import {
@@ -11,6 +12,7 @@ import {
   estimatePresent,
   pipelineLabel,
 } from '../../utils/tradeinCustomerStatus.js'
+import { normalizePlate } from '../../utils/plateFormat.js'
 
 const DEMO_TRADEIN_KEY = 'demo_tradein_history_v1'
 
@@ -54,12 +56,14 @@ export function TradeInPage() {
   const [expectLowPrice, setExpectLowPrice] = useState('')
   const [newCarModel, setNewCarModel] = useState('')
   const [salesName, setSalesName] = useState('')
+  const [plateNumber, setPlateNumber] = useState('')
 
   const [rows, setRows] = useState([])
   const [listErr, setListErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [doneMsg, setDoneMsg] = useState('')
   const [requestingId, setRequestingId] = useState('')
+  const [duplicatePlate, setDuplicatePlate] = useState('')
 
   const refreshDemo = useCallback(() => {
     if (demoMode && customerWaKey) setRows(loadDemoHistory(customerWaKey))
@@ -89,14 +93,17 @@ export function TradeInPage() {
       km.trim().length >= 1 &&
       stnkMonth.trim().length >= 2 &&
       expectLowPrice.trim().length >= 1 &&
-      newCarModel.trim().length >= 2
+      newCarModel.trim().length >= 2 &&
+      normalizePlate(plateNumber).length >= 4
     )
-  }, [merkModel, year, color, km, stnkMonth, expectLowPrice, newCarModel])
+  }, [merkModel, year, color, km, stnkMonth, expectLowPrice, newCarModel, plateNumber])
 
   async function onSubmit(e) {
     e.preventDefault()
     setDoneMsg('')
     if (!canSubmit || !customerWaKey) return
+    const plateRaw = plateNumber.trim()
+    const plateKey = normalizePlate(plateRaw)
     const payload = {
       customerUid: authUser?.uid || '',
       customerWaKey,
@@ -112,12 +119,21 @@ export function TradeInPage() {
       expectLowPrice: expectLowPrice.trim(),
       newCarModel: newCarModel.trim(),
       salesName: salesName.trim() || '',
+      plateNumber: plateRaw,
+      plateKey,
       carType: `${merkModel.trim()} ${transmission}`.trim(),
     }
 
     setSubmitting(true)
     try {
       if (demoMode) {
+        const existing = loadDemoHistory(customerWaKey).find(
+          (r) => normalizePlate(r.plateKey || r.plateNumber || '') === plateKey,
+        )
+        if (existing) {
+          setDuplicatePlate(plateRaw)
+          return
+        }
         const id = `demo-${Date.now()}`
         const row = {
           id,
@@ -142,10 +158,15 @@ export function TradeInPage() {
       setExpectLowPrice('')
       setNewCarModel('')
       setSalesName('')
+      setPlateNumber('')
       setTransmission('Matic')
       setBpkbStatus('Tersedia')
     } catch (err) {
-      setDoneMsg(err?.message || 'Gagal mengirim. Coba lagi.')
+      if (err instanceof DuplicatePlateError) {
+        setDuplicatePlate(err.plate || plateRaw)
+      } else {
+        setDoneMsg(err?.message || 'Gagal mengirim. Coba lagi.')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -195,7 +216,19 @@ export function TradeInPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <form onSubmit={onSubmit} className="form">
-          <label className="label" htmlFor="merk">
+          <label className="label" htmlFor="plate">
+            Plat Nomor
+          </label>
+          <input
+            id="plate"
+            className="input"
+            placeholder="DB 1234 GM"
+            value={plateNumber}
+            onChange={(e) => setPlateNumber(e.target.value.toUpperCase())}
+            autoComplete="off"
+          />
+
+          <label className="label" htmlFor="merk" style={{ marginTop: 10 }}>
             Merk / Model
           </label>
           <input
@@ -389,6 +422,31 @@ export function TradeInPage() {
           </table>
         </div>
       </div>
+
+      {duplicatePlate ? (
+        <div
+          className="modalOverlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setDuplicatePlate('')}
+        >
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+            <h2 className="h2" style={{ margin: 0 }}>Plat sudah terdaftar</h2>
+            <p style={{ marginTop: 10 }}>
+              Mobil dengan Plat nomor <strong>{duplicatePlate}</strong> sudah pernah di input.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setDuplicatePlate('')}
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

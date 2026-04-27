@@ -103,6 +103,19 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Index plat → request trade-in. Doc ID = plateKey (canonical, UPPER tanpa spasi).
+    // Dipakai untuk memastikan satu plat hanya bisa diinput sekali.
+    match /tradein_plate_index/{plateKey} {
+      allow read: if signedIn();
+      allow create: if isCustomerApp()
+        && request.resource.data.plateKey == plateKey
+        && request.resource.data.customerUid == request.auth.uid
+        && exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
+        && request.resource.data.customerWaKey
+          == get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey;
+      allow update, delete: if isRoot() || roleIn(['tradein', 'supervisor']);
+    }
+
     match /tradein_requests/{id} {
       allow read: if isRoot()
         || roleIn(['tradein', 'supervisor', 'aftersales'])
