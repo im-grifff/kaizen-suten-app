@@ -67,6 +67,7 @@ export function TradeInRequestsPage() {
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('new')
   const [estimates, setEstimates] = useState({})
+  const [notesDraft, setNotesDraft] = useState({})
   const [fixedDraft, setFixedDraft] = useState({})
   const [cancelDraft, setCancelDraft] = useState({})
   const [savingId, setSavingId] = useState('')
@@ -90,6 +91,14 @@ export function TradeInRequestsPage() {
         const low = r.estimateLow ?? r.estimasiLow ?? ''
         const high = r.estimateHigh ?? r.estimasiHigh ?? ''
         next[r.id] = { low: String(low || ''), high: String(high || '') }
+      }
+      return next
+    })
+    setNotesDraft((prev) => {
+      const next = { ...prev }
+      for (const r of rows) {
+        if (next[r.id] != null) continue
+        next[r.id] = String(r.estimateNotes || '')
       }
       return next
     })
@@ -161,6 +170,16 @@ export function TradeInRequestsPage() {
     }
   }
 
+  async function persistNotes(id) {
+    const notes = String(notesDraft[id] || '')
+    setSavingId(id)
+    try {
+      await updateTradeinRequest(id, { estimateNotes: notes })
+    } finally {
+      setSavingId('')
+    }
+  }
+
   async function persistFixed(id) {
     const r = rowById.get(id)
     if (!r) return
@@ -203,6 +222,7 @@ export function TradeInRequestsPage() {
       Sales: rowSalesName(r),
       'Estimasi Min': r.estimateLow != null ? Number(r.estimateLow) : '',
       'Estimasi Max': r.estimateHigh != null ? Number(r.estimateHigh) : '',
+      'Keterangan Estimasi': r.estimateNotes || '',
       'Harga Fix': r.fixedPrice != null ? Number(r.fixedPrice) : '',
       'Alasan Batal': r.cancelReason || '',
     }
@@ -492,54 +512,82 @@ export function TradeInRequestsPage() {
                       ) : null}
 
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <input
-                            className="input"
-                            style={{
-                              width: 90,
-                              opacity: estimateEditable ? 1 : 0.75,
-                              cursor: estimateEditable ? undefined : 'not-allowed',
-                            }}
-                            placeholder="Min"
-                            readOnly={!estimateEditable}
-                            value={e.low}
-                            onChange={
-                              estimateEditable
-                                ? (ev) => {
-                                    const v = ev.target.value
-                                    setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), low: v } }))
-                                  }
-                                : undefined
-                            }
-                            onBlur={estimateEditable ? () => persistEstimate(r.id) : undefined}
-                          />
-                          <span className="muted">-</span>
-                          <input
-                            className="input"
-                            style={{
-                              width: 90,
-                              opacity: estimateEditable ? 1 : 0.75,
-                              cursor: estimateEditable ? undefined : 'not-allowed',
-                            }}
-                            placeholder="Max"
-                            readOnly={!estimateEditable}
-                            value={e.high}
-                            onChange={
-                              estimateEditable
-                                ? (ev) => {
-                                    const v = ev.target.value
-                                    setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), high: v } }))
-                                  }
-                                : undefined
-                            }
-                            onBlur={estimateEditable ? () => persistEstimate(r.id) : undefined}
-                          />
-                          {!estimateEditable ? (
-                            <span className="muted" style={{ fontSize: 10 }}>
-                              (kunci)
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input
+                              className="input"
+                              style={{
+                                width: 90,
+                                opacity: estimateEditable ? 1 : 0.75,
+                                cursor: estimateEditable ? undefined : 'not-allowed',
+                              }}
+                              placeholder="Min"
+                              readOnly={!estimateEditable}
+                              value={e.low}
+                              onChange={
+                                estimateEditable
+                                  ? (ev) => {
+                                      const v = ev.target.value
+                                      setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), low: v } }))
+                                    }
+                                  : undefined
+                              }
+                              onBlur={estimateEditable ? () => persistEstimate(r.id) : undefined}
+                            />
+                            <span className="muted">-</span>
+                            <input
+                              className="input"
+                              style={{
+                                width: 90,
+                                opacity: estimateEditable ? 1 : 0.75,
+                                cursor: estimateEditable ? undefined : 'not-allowed',
+                              }}
+                              placeholder="Max"
+                              readOnly={!estimateEditable}
+                              value={e.high}
+                              onChange={
+                                estimateEditable
+                                  ? (ev) => {
+                                      const v = ev.target.value
+                                      setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), high: v } }))
+                                    }
+                                  : undefined
+                              }
+                              onBlur={estimateEditable ? () => persistEstimate(r.id) : undefined}
+                            />
+                            {!estimateEditable ? (
+                              <span className="muted" style={{ fontSize: 10 }}>
+                                (kunci)
+                              </span>
+                            ) : null}
+                            {savingId === r.id ? <span className="muted">…</span> : null}
+                          </div>
+                          {isAllTab ? (
+                            <span className="muted" style={{ fontSize: 11, whiteSpace: 'pre-wrap', maxWidth: 220 }}>
+                              {String(r.estimateNotes || '').trim() || '—'}
                             </span>
-                          ) : null}
-                          {savingId === r.id ? <span className="muted">…</span> : null}
+                          ) : (
+                            <textarea
+                              className="input"
+                              style={{
+                                width: 200,
+                                minHeight: 40,
+                                resize: 'vertical',
+                                opacity: estimateEditable ? 1 : 0.75,
+                                cursor: estimateEditable ? undefined : 'not-allowed',
+                              }}
+                              placeholder="Keterangan"
+                              readOnly={!estimateEditable}
+                              value={notesDraft[r.id] ?? ''}
+                              onChange={
+                                estimateEditable
+                                  ? (ev) =>
+                                      setNotesDraft((s) => ({ ...s, [r.id]: ev.target.value }))
+                                  : undefined
+                              }
+                              onBlur={estimateEditable ? () => persistNotes(r.id) : undefined}
+                            />
+                          )}
                         </div>
                       </td>
 
