@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '../../state/AuthContext.jsx'
-import { listenTradeinRequests, updateTradeinRequest } from '../../firestore/tradeinRequests.js'
+import { deleteTradeinRequest, listenTradeinRequests, updateTradeinRequest, updateTradeinRequestRoot } from '../../firestore/tradeinRequests.js'
 import { normalizePlate } from '../../utils/plateFormat.js'
+import { Timestamp } from 'firebase/firestore'
 
 const TABS = [
   { id: 'new', label: 'New' },
@@ -61,6 +62,34 @@ function rowSalesName(r) {
   return String(r.salesName || '').trim()
 }
 
+function stageToStatus(adminStage) {
+  if (adminStage === 'cancel') return 'cancelled'
+  if (adminStage === 'new') return 'new'
+  return 'contacted'
+}
+
+function toNumberOrNull(raw) {
+  const digits = String(raw ?? '').replace(/[^\d]/g, '')
+  if (!digits) return null
+  const n = Number(digits)
+  return Number.isFinite(n) ? n : null
+}
+
+function toDatetimeLocalValue(ts) {
+  const d = ts?.toDate ? ts.toDate() : ts instanceof Date ? ts : null
+  if (!d) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function fromDatetimeLocalValue(v) {
+  const s = String(v || '').trim()
+  if (!s) return null
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return null
+  return d
+}
+
 export function TradeInRequestsPage() {
   const { user, role } = useAuth()
   const [rows, setRows] = useState([])
@@ -71,6 +100,34 @@ export function TradeInRequestsPage() {
   const [fixedDraft, setFixedDraft] = useState({})
   const [cancelDraft, setCancelDraft] = useState({})
   const [savingId, setSavingId] = useState('')
+  const isRoot = role === 'root'
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editId, setEditId] = useState('')
+  const [editErr, setEditErr] = useState('')
+  const [editForm, setEditForm] = useState({
+    createdAt: '',
+    adminStage: 'new',
+    customerName: '',
+    customerPhone: '',
+    customerWaKey: '',
+    plateNumber: '',
+    merkModel: '',
+    transmission: '',
+    year: '',
+    color: '',
+    km: '',
+    stnkMonth: '',
+    bpkbStatus: 'Tersedia',
+    expectLowPrice: '',
+    newCarModel: '',
+    salesName: '',
+    estimateLow: '',
+    estimateHigh: '',
+    estimateNotes: '',
+    fixedPrice: '',
+    cancelReason: '',
+  })
 
   useEffect(() => {
     const unsub = listenTradeinRequests({
@@ -356,6 +413,94 @@ export function TradeInRequestsPage() {
     return toDigits(e.low).length > 0 || toDigits(e.high).length > 0
   }
 
+  function openEditor(r) {
+    setEditErr('')
+    setEditId(r.id)
+    setEditForm({
+      createdAt: toDatetimeLocalValue(r.createdAt),
+      adminStage: deriveAdminStage(r),
+      customerName: r.customerName || '',
+      customerPhone: r.customerPhone || '',
+      customerWaKey: r.customerWaKey || '',
+      plateNumber: r.plateNumber || normalizePlate(r.plateKey || '') || '',
+      merkModel: r.merkModel || '',
+      transmission: r.transmission || '',
+      year: r.year || '',
+      color: r.color || '',
+      km: r.km || '',
+      stnkMonth: r.stnkMonth || '',
+      bpkbStatus: r.bpkbStatus || 'Tersedia',
+      expectLowPrice: r.expectLowPrice ?? '',
+      newCarModel: r.newCarModel || '',
+      salesName: r.salesName || '',
+      estimateLow: r.estimateLow ?? '',
+      estimateHigh: r.estimateHigh ?? '',
+      estimateNotes: r.estimateNotes || '',
+      fixedPrice: r.fixedPrice ?? '',
+      cancelReason: r.cancelReason || '',
+    })
+    setEditOpen(true)
+  }
+
+  async function saveEditor() {
+    if (!isRoot || !editId) return
+    setEditErr('')
+    setSavingId(editId)
+    try {
+      const createdAtDate = fromDatetimeLocalValue(editForm.createdAt)
+      const adminStage = editForm.adminStage
+      const patch = {
+        adminStage,
+        status: stageToStatus(adminStage),
+        customerName: String(editForm.customerName || '').trim(),
+        customerPhone: String(editForm.customerPhone || editForm.customerWaKey || '').trim(),
+        customerWaKey: String(editForm.customerWaKey || editForm.customerPhone || '').trim(),
+        plateNumber: String(editForm.plateNumber || '').trim(),
+        merkModel: String(editForm.merkModel || '').trim(),
+        transmission: String(editForm.transmission || '').trim(),
+        year: String(editForm.year || '').trim(),
+        color: String(editForm.color || '').trim(),
+        km: String(editForm.km || '').trim(),
+        stnkMonth: String(editForm.stnkMonth || '').trim(),
+        bpkbStatus: String(editForm.bpkbStatus || '').trim(),
+        expectLowPrice: String(editForm.expectLowPrice || '').trim(),
+        newCarModel: String(editForm.newCarModel || '').trim(),
+        salesName: String(editForm.salesName || '').trim(),
+        estimateLow: toNumberOrNull(editForm.estimateLow),
+        estimateHigh: toNumberOrNull(editForm.estimateHigh),
+        estimateNotes: String(editForm.estimateNotes || '').trim(),
+        fixedPrice: toNumberOrNull(editForm.fixedPrice),
+        cancelReason: String(editForm.cancelReason || '').trim(),
+      }
+      if (createdAtDate) patch.createdAt = Timestamp.fromDate(createdAtDate)
+
+      await updateTradeinRequestRoot(editId, patch)
+      setEditOpen(false)
+      setEditId('')
+    } catch (e) {
+      setEditErr(e?.message || 'Gagal menyimpan.')
+    } finally {
+      setSavingId('')
+    }
+  }
+
+  async function deleteEditor() {
+    if (!isRoot || !editId) return
+    const ok = window.confirm('Hapus data request trade-in ini? Tindakan ini tidak bisa dibatalkan.')
+    if (!ok) return
+    setEditErr('')
+    setSavingId(editId)
+    try {
+      await deleteTradeinRequest(editId)
+      setEditOpen(false)
+      setEditId('')
+    } catch (e) {
+      setEditErr(e?.message || 'Gagal menghapus.')
+    } finally {
+      setSavingId('')
+    }
+  }
+
   return (
     <div>
       <div style={{ fontWeight: 900, fontSize: 18 }}>Trade In Requests</div>
@@ -433,6 +578,7 @@ export function TradeInRequestsPage() {
                   ...(isAllTab ? ['Stage'] : []),
                   'Estimasi',
                   ...(showFixAndReason ? ['Harga fix', 'Alasan'] : []),
+                  ...(isRoot ? ['Edit'] : []),
                   ...(!isAllTab ? ['Aksi'] : []),
                 ].map((h) => (
                   <th key={h} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
@@ -446,7 +592,11 @@ export function TradeInRequestsPage() {
                 <tr>
                   <td
                     colSpan={
-                      8 + (showFixAndReason ? 2 : 0) + (isAllTab ? 1 : 0) + (!isAllTab ? 1 : 0)
+                      8 +
+                      (showFixAndReason ? 2 : 0) +
+                      (isAllTab ? 1 : 0) +
+                      (isRoot ? 1 : 0) +
+                      (!isAllTab ? 1 : 0)
                     }
                     className="muted"
                     style={{ padding: 12 }}
@@ -654,6 +804,14 @@ export function TradeInRequestsPage() {
                         </td>
                       ) : null}
 
+                      {isRoot ? (
+                        <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          <button type="button" className="btn" onClick={() => openEditor(r)}>
+                            Edit
+                          </button>
+                        </td>
+                      ) : null}
+
                       {!isAllTab ? (
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
@@ -785,6 +943,299 @@ export function TradeInRequestsPage() {
           </table>
         </div>
       </div>
+
+      {isRoot && editOpen ? (
+        <div
+          className="modalOverlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Trade-in editor"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setEditErr('')
+              setEditOpen(false)
+              setEditId('')
+            }
+          }}
+        >
+          <div className="modalCard" style={{ width: 'min(100%, 860px)' }}>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>Edit trade-in request</div>
+            <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+              ID: {editId}
+            </div>
+
+            {editErr ? (
+              <div
+                className="card"
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderColor: 'rgba(239, 68, 68, 0.5)',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  fontSize: 13,
+                }}
+              >
+                {editErr}
+              </div>
+            ) : null}
+
+            <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>
+                    Created
+                  </label>
+                  <input
+                    className="input"
+                    type="datetime-local"
+                    value={editForm.createdAt}
+                    onChange={(e) => setEditForm((s) => ({ ...s, createdAt: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>
+                    Stage
+                  </label>
+                  <select
+                    className="input"
+                    value={editForm.adminStage}
+                    onChange={(e) => setEditForm((s) => ({ ...s, adminStage: e.target.value }))}
+                  >
+                    {['new', 'contacted', 'inspected', 'dealing', 'cancel'].map((s) => (
+                      <option key={s} value={s}>
+                        {STAGE_LABELS[s] || s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>
+                    Customer name
+                  </label>
+                  <input
+                    className="input"
+                    value={editForm.customerName}
+                    onChange={(e) => setEditForm((s) => ({ ...s, customerName: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>
+                    WA / Phone
+                  </label>
+                  <input
+                    className="input"
+                    value={editForm.customerWaKey}
+                    onChange={(e) => setEditForm((s) => ({ ...s, customerWaKey: e.target.value, customerPhone: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>
+                    Plat nomor
+                  </label>
+                  <input
+                    className="input"
+                    value={editForm.plateNumber}
+                    onChange={(e) => setEditForm((s) => ({ ...s, plateNumber: e.target.value.toUpperCase() }))}
+                  />
+                </div>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>
+                    Sales
+                  </label>
+                  <input
+                    className="input"
+                    value={editForm.salesName}
+                    onChange={(e) => setEditForm((s) => ({ ...s, salesName: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: 12, background: 'rgba(255,255,255,0.04)' }}>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>Unit</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Merk / Model
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.merkModel}
+                      onChange={(e) => setEditForm((s) => ({ ...s, merkModel: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Transmisi
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.transmission}
+                      onChange={(e) => setEditForm((s) => ({ ...s, transmission: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Tahun
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.year}
+                      onChange={(e) => setEditForm((s) => ({ ...s, year: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Warna
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.color}
+                      onChange={(e) => setEditForm((s) => ({ ...s, color: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      KM
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.km}
+                      onChange={(e) => setEditForm((s) => ({ ...s, km: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      STNK Bulan
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.stnkMonth}
+                      onChange={(e) => setEditForm((s) => ({ ...s, stnkMonth: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Status BPKB
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.bpkbStatus}
+                      onChange={(e) => setEditForm((s) => ({ ...s, bpkbStatus: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Ekspektasi terendah
+                    </label>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      value={editForm.expectLowPrice}
+                      onChange={(e) => setEditForm((s) => ({ ...s, expectLowPrice: e.target.value }))}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Mobil baru diincar
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.newCarModel}
+                      onChange={(e) => setEditForm((s) => ({ ...s, newCarModel: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: 12, background: 'rgba(255,255,255,0.04)' }}>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>Estimasi & hasil</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Estimasi Min
+                    </label>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      value={editForm.estimateLow}
+                      onChange={(e) => setEditForm((s) => ({ ...s, estimateLow: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Estimasi Max
+                    </label>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      value={editForm.estimateHigh}
+                      onChange={(e) => setEditForm((s) => ({ ...s, estimateHigh: e.target.value }))}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Keterangan Estimasi
+                    </label>
+                    <textarea
+                      className="input"
+                      style={{ minHeight: 64, resize: 'vertical' }}
+                      value={editForm.estimateNotes}
+                      onChange={(e) => setEditForm((s) => ({ ...s, estimateNotes: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Harga Fix
+                    </label>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      value={editForm.fixedPrice}
+                      onChange={(e) => setEditForm((s) => ({ ...s, fixedPrice: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>
+                      Alasan Batal
+                    </label>
+                    <input
+                      className="input"
+                      value={editForm.cancelReason}
+                      onChange={(e) => setEditForm((s) => ({ ...s, cancelReason: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+                <button type="button" className="btn" onClick={() => { setEditOpen(false); setEditId('') }}>
+                  Close
+                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ borderColor: 'rgba(239, 68, 68, 0.6)', color: 'rgba(239, 68, 68, 0.95)' }}
+                    onClick={deleteEditor}
+                    disabled={savingId === editId}
+                  >
+                    Hapus
+                  </button>
+                  <button type="button" className="btn btnPrimary" onClick={saveEditor} disabled={savingId === editId}>
+                    Simpan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
