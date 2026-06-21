@@ -34,8 +34,8 @@ if (!serviceAccountPath || !email || !role) {
   process.exit(1)
 }
 
-if (!['root', 'supervisor', 'aftersales', 'tradein'].includes(role)) {
-  console.error('Invalid role. Allowed: root, supervisor, aftersales, tradein')
+if (!['root', 'supervisor', 'aftersales', 'tradein', 'otoxpert'].includes(role)) {
+  console.error('Invalid role. Allowed: root, supervisor, aftersales, tradein, otoxpert')
   process.exit(1)
 }
 

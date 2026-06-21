@@ -13,8 +13,42 @@ import {
   pipelineLabel,
 } from '../../utils/tradeinCustomerStatus.js'
 import { normalizePlate } from '../../utils/plateFormat.js'
+import { getChannelOrDefault } from '../../utils/channel.js'
+import { formatThousands } from '../../utils/numberFormat.js'
 
 const DEMO_TRADEIN_KEY = 'demo_tradein_history_v1'
+
+const EXTERIOR_OPTIONS = [
+  'Body Ex Perbaikan Lecet Minor / Ada Lecet',
+  'Body Ex Perbaikan Lecet Besar atau Perlu Perbaikan',
+  'Unit ex Laka Ringan',
+  'Unit Ex Laka Sedang',
+  'Unit Ex laka Berat',
+]
+
+const INTERIOR_OPTIONS = [
+  'FULL ORIGINAL BERSIH & RAPIH, FITUR-FITUR NORMAL',
+  'INTERIOR KURANG RAPIH, FITUR-FITUR PERLU PERBAIKAN',
+  'Interior Sudah difariasi atau Ada fitur yang tidak berfungsi',
+]
+
+const ENGINE_OPTIONS = [
+  'KONDISI NORMAL - TIDAK ADA INDIKASI MASALAH',
+  'KONDISI KURANG NORMAL - ADA INDIKASI MASALAH',
+  'KONDISI MESIN ADA MASALAH',
+]
+
+const TRANSMISSION_MATIC_OPTIONS = [
+  'METIK FULL RESPONSIF & HALUS',
+  'METIK SLOW RESPONS & SUDAH MULAI BERGEJALA UNTUK PENGGANTIAN',
+  'TRANSMISI METIK SUDAH TERINDIKASI BERMASALAH UNTUK PENGGANTIAN',
+]
+
+const SUSPENSION_OPTIONS = [
+  'KONDISI SUSPENSI NORMAL & NYAMAN',
+  'KONDISI SUSPENSI PERLU PENGGANTIAN/PERAWATAN RINGAN',
+  'KONDSI SUSPENSI PERLU PENGGANTAIN BESAR',
+]
 
 function loadDemoHistory(waKey) {
   try {
@@ -46,6 +80,8 @@ function formatTs(ts) {
 export function TradeInPage() {
   const { authUser, customerWaKey, customerDisplayName, demoMode } = useAuth()
 
+  const [step, setStep] = useState(1)
+
   const [merkModel, setMerkModel] = useState('')
   const [transmission, setTransmission] = useState('Matic')
   const [year, setYear] = useState('')
@@ -57,6 +93,13 @@ export function TradeInPage() {
   const [newCarModel, setNewCarModel] = useState('')
   const [salesName, setSalesName] = useState('')
   const [plateNumber, setPlateNumber] = useState('')
+
+  // Step 2 — Kondisi Kendaraan
+  const [exteriorCondition, setExteriorCondition] = useState('')
+  const [interiorCondition, setInteriorCondition] = useState('')
+  const [engineCondition, setEngineCondition] = useState('')
+  const [transmissionCondition, setTransmissionCondition] = useState('')
+  const [suspensionCondition, setSuspensionCondition] = useState('')
 
   const [rows, setRows] = useState([])
   const [listErr, setListErr] = useState('')
@@ -85,18 +128,46 @@ export function TradeInPage() {
     return () => unsub?.()
   }, [demoMode, customerWaKey])
 
-  const canSubmit = useMemo(() => {
+  const isMatic = transmission === 'Matic'
+
+  const canProceedStep1 = useMemo(() => {
     return (
       merkModel.trim().length >= 2 &&
       String(year).trim().length >= 2 &&
       color.trim().length >= 1 &&
-      km.trim().length >= 1 &&
       stnkMonth.trim().length >= 2 &&
       expectLowPrice.trim().length >= 1 &&
       newCarModel.trim().length >= 2 &&
       normalizePlate(plateNumber).length >= 4
     )
-  }, [merkModel, year, color, km, stnkMonth, expectLowPrice, newCarModel, plateNumber])
+  }, [merkModel, year, color, stnkMonth, expectLowPrice, newCarModel, plateNumber])
+
+  const canSubmit = useMemo(() => {
+    return (
+      canProceedStep1 &&
+      km.trim().length >= 1 &&
+      Boolean(exteriorCondition) &&
+      Boolean(interiorCondition) &&
+      Boolean(engineCondition) &&
+      Boolean(suspensionCondition) &&
+      (!isMatic || Boolean(transmissionCondition))
+    )
+  }, [
+    canProceedStep1,
+    km,
+    exteriorCondition,
+    interiorCondition,
+    engineCondition,
+    suspensionCondition,
+    isMatic,
+    transmissionCondition,
+  ])
+
+  function goToStep2() {
+    setDoneMsg('')
+    if (!canProceedStep1) return
+    setStep(2)
+  }
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -122,6 +193,12 @@ export function TradeInPage() {
       plateNumber: plateRaw,
       plateKey,
       carType: `${merkModel.trim()} ${transmission}`.trim(),
+      sourceChannel: getChannelOrDefault(),
+      exteriorCondition,
+      interiorCondition,
+      engineCondition,
+      transmissionCondition: isMatic ? transmissionCondition : '',
+      suspensionCondition,
     }
 
     setSubmitting(true)
@@ -161,6 +238,12 @@ export function TradeInPage() {
       setPlateNumber('')
       setTransmission('Matic')
       setBpkbStatus('Tersedia')
+      setExteriorCondition('')
+      setInteriorCondition('')
+      setEngineCondition('')
+      setTransmissionCondition('')
+      setSuspensionCondition('')
+      setStep(1)
     } catch (err) {
       if (err instanceof DuplicatePlateError) {
         setDuplicatePlate(err.plate || plateRaw)
@@ -206,7 +289,9 @@ export function TradeInPage() {
   return (
     <div className="page">
       <h1 className="h1">Trade In</h1>
-      <p className="muted small">Isi data unit yang ingin ditukar tambah.</p>
+      <p className="muted small">
+        Langkah {step} dari 2 — {step === 1 ? 'Data Kendaraan' : 'Kondisi Kendaraan'}
+      </p>
 
       {doneMsg ? (
         <div className={`alert ${doneMsg.includes('Gagal') ? 'alert--error' : 'alert--ok'}`} style={{ marginTop: 12 }}>
@@ -216,138 +301,264 @@ export function TradeInPage() {
 
       <div className="card" style={{ marginTop: 12 }}>
         <form onSubmit={onSubmit} className="form">
-          <label className="label" htmlFor="plate">
-            Plat Nomor
-          </label>
-          <input
-            id="plate"
-            className="input"
-            placeholder="DB 1234 GM"
-            value={plateNumber}
-            onChange={(e) => setPlateNumber(e.target.value.toUpperCase())}
-            autoComplete="off"
-          />
+          {step === 1 ? (
+            <>
+              <h2 className="h2" style={{ margin: 0 }}>Data Kendaraan</h2>
 
-          <label className="label" htmlFor="merk" style={{ marginTop: 10 }}>
-            Merk / Model
-          </label>
-          <input
-            id="merk"
-            className="input"
-            placeholder="Rush S GR Sport"
-            value={merkModel}
-            onChange={(e) => setMerkModel(e.target.value)}
-          />
+              <label className="label" htmlFor="plate" style={{ marginTop: 10 }}>
+                Plat Nomor
+              </label>
+              <input
+                id="plate"
+                className="input"
+                placeholder="DB 1234 GM"
+                value={plateNumber}
+                onChange={(e) => setPlateNumber(e.target.value.toUpperCase())}
+                autoComplete="off"
+              />
 
-          <label className="label" htmlFor="trans" style={{ marginTop: 10 }}>
-            Type / Transmisi
-          </label>
-          <select
-            id="trans"
-            className="input"
-            value={transmission}
-            onChange={(e) => setTransmission(e.target.value)}
-          >
-            <option value="Manual">Manual</option>
-            <option value="Matic">Matic</option>
-          </select>
+              <label className="label" htmlFor="merk" style={{ marginTop: 10 }}>
+                Merk / Model
+              </label>
+              <input
+                id="merk"
+                className="input"
+                placeholder="Rush S GR Sport"
+                value={merkModel}
+                onChange={(e) => setMerkModel(e.target.value)}
+              />
 
-          <label className="label" htmlFor="year" style={{ marginTop: 10 }}>
-            Tahun
-          </label>
-          <input
-            id="year"
-            className="input"
-            placeholder="2020"
-            inputMode="numeric"
-            value={year}
-            onChange={(e) => setYear(e.target.value.replace(/[^\d]/g, ''))}
-          />
+              <label className="label" htmlFor="trans" style={{ marginTop: 10 }}>
+                Type / Transmisi
+              </label>
+              <select
+                id="trans"
+                className="input"
+                value={transmission}
+                onChange={(e) => setTransmission(e.target.value)}
+              >
+                <option value="Manual">Manual</option>
+                <option value="Matic">Matic</option>
+              </select>
 
-          <label className="label" htmlFor="color" style={{ marginTop: 10 }}>
-            Warna
-          </label>
-          <input
-            id="color"
-            className="input"
-            placeholder="Putih"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-          />
+              <label className="label" htmlFor="year" style={{ marginTop: 10 }}>
+                Tahun
+              </label>
+              <input
+                id="year"
+                className="input"
+                placeholder="2020"
+                inputMode="numeric"
+                value={year}
+                onChange={(e) => setYear(e.target.value.replace(/[^\d]/g, ''))}
+              />
 
-          <label className="label" htmlFor="km" style={{ marginTop: 10 }}>
-            KM
-          </label>
-          <input
-            id="km"
-            className="input"
-            placeholder="45.000 Km"
-            value={km}
-            onChange={(e) => setKm(e.target.value)}
-          />
+              <label className="label" htmlFor="color" style={{ marginTop: 10 }}>
+                Warna
+              </label>
+              <input
+                id="color"
+                className="input"
+                placeholder="Putih"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+              />
 
-          <label className="label" htmlFor="stnk" style={{ marginTop: 10 }}>
-            STNK bulan
-          </label>
-          <input
-            id="stnk"
-            className="input"
-            placeholder="April"
-            value={stnkMonth}
-            onChange={(e) => setStnkMonth(e.target.value)}
-          />
+              <label className="label" htmlFor="stnk" style={{ marginTop: 10 }}>
+                STNK bulan
+              </label>
+              <input
+                id="stnk"
+                className="input"
+                placeholder="April"
+                value={stnkMonth}
+                onChange={(e) => setStnkMonth(e.target.value)}
+              />
 
-          <label className="label" htmlFor="bpkb" style={{ marginTop: 10 }}>
-            Status BPKB
-          </label>
-          <select
-            id="bpkb"
-            className="input"
-            value={bpkbStatus}
-            onChange={(e) => setBpkbStatus(e.target.value)}
-          >
-            <option value="Tersedia">Tersedia</option>
-            <option value="Tidak Tersedia">Tidak Tersedia</option>
-          </select>
+              <label className="label" htmlFor="bpkb" style={{ marginTop: 10 }}>
+                Status BPKB
+              </label>
+              <select
+                id="bpkb"
+                className="input"
+                value={bpkbStatus}
+                onChange={(e) => setBpkbStatus(e.target.value)}
+              >
+                <option value="Tersedia">Tersedia</option>
+                <option value="Tidak Tersedia">Tidak Tersedia</option>
+              </select>
 
-          <label className="label" htmlFor="exp" style={{ marginTop: 10 }}>
-            Ekspektasi harga terendah
-          </label>
-          <input
-            id="exp"
-            className="input"
-            placeholder="Rp (perkiraan)"
-            inputMode="decimal"
-            value={expectLowPrice}
-            onChange={(e) => setExpectLowPrice(e.target.value)}
-          />
+              <label className="label" htmlFor="exp" style={{ marginTop: 10 }}>
+                Ekspektasi harga terendah
+              </label>
+              <input
+                id="exp"
+                className="input"
+                placeholder="Rp (perkiraan)"
+                inputMode="numeric"
+                value={expectLowPrice}
+                onChange={(e) => setExpectLowPrice(formatThousands(e.target.value))}
+              />
 
-          <label className="label" htmlFor="newcar" style={{ marginTop: 10 }}>
-            Model mobil baru
-          </label>
-          <input
-            id="newcar"
-            className="input"
-            placeholder="Innova Zenix HEV"
-            value={newCarModel}
-            onChange={(e) => setNewCarModel(e.target.value)}
-          />
+              <label className="label" htmlFor="newcar" style={{ marginTop: 10 }}>
+                Model mobil baru
+              </label>
+              <input
+                id="newcar"
+                className="input"
+                placeholder="Innova Zenix HEV"
+                value={newCarModel}
+                onChange={(e) => setNewCarModel(e.target.value)}
+              />
 
-          <label className="label" htmlFor="sales" style={{ marginTop: 10 }}>
-            Sales <span className="muted small">(opsional)</span>
-          </label>
-          <input
-            id="sales"
-            className="input"
-            placeholder="Nama sales penanggung jawab"
-            value={salesName}
-            onChange={(e) => setSalesName(e.target.value)}
-            autoComplete="off"
-          />
+              <label className="label" htmlFor="sales" style={{ marginTop: 10 }}>
+                Sales <span className="muted small">(opsional)</span>
+              </label>
+              <input
+                id="sales"
+                className="input"
+                placeholder="Nama sales penanggung jawab"
+                value={salesName}
+                onChange={(e) => setSalesName(e.target.value)}
+                autoComplete="off"
+              />
 
-          <button className="btn btn--primary" type="submit" disabled={!canSubmit || submitting} style={{ marginTop: 14 }}>
-            {submitting ? 'Mengirim…' : 'Kirim request'}
-          </button>
+              <button
+                className="btn btn--primary"
+                type="button"
+                disabled={!canProceedStep1}
+                style={{ marginTop: 14 }}
+                onClick={goToStep2}
+              >
+                Selanjutnya
+              </button>
+            </>
+          ) : (
+            <>
+              <h2 className="h2" style={{ margin: 0 }}>Kondisi Kendaraan</h2>
+
+              <label className="label" htmlFor="exterior" style={{ marginTop: 10 }}>
+                Kondisi Exterior
+              </label>
+              <select
+                id="exterior"
+                className="input"
+                value={exteriorCondition}
+                onChange={(e) => setExteriorCondition(e.target.value)}
+              >
+                <option value="">Pilih kondisi exterior…</option>
+                {EXTERIOR_OPTIONS.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+
+              <label className="label" htmlFor="interior" style={{ marginTop: 10 }}>
+                Kondisi Interior
+              </label>
+              <select
+                id="interior"
+                className="input"
+                value={interiorCondition}
+                onChange={(e) => setInteriorCondition(e.target.value)}
+              >
+                <option value="">Pilih kondisi interior…</option>
+                {INTERIOR_OPTIONS.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+
+              <label className="label" htmlFor="engine" style={{ marginTop: 10 }}>
+                Kondisi Mesin
+              </label>
+              <select
+                id="engine"
+                className="input"
+                value={engineCondition}
+                onChange={(e) => setEngineCondition(e.target.value)}
+              >
+                <option value="">Pilih kondisi mesin…</option>
+                {ENGINE_OPTIONS.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+
+              {isMatic ? (
+                <>
+                  <label className="label" htmlFor="transCond" style={{ marginTop: 10 }}>
+                    Transmisi (Matic)
+                  </label>
+                  <select
+                    id="transCond"
+                    className="input"
+                    value={transmissionCondition}
+                    onChange={(e) => setTransmissionCondition(e.target.value)}
+                  >
+                    <option value="">Pilih kondisi transmisi…</option>
+                    {TRANSMISSION_MATIC_OPTIONS.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
+
+              <label className="label" htmlFor="suspension" style={{ marginTop: 10 }}>
+                Suspensi &amp; Kaki-kaki
+              </label>
+              <select
+                id="suspension"
+                className="input"
+                value={suspensionCondition}
+                onChange={(e) => setSuspensionCondition(e.target.value)}
+              >
+                <option value="">Pilih kondisi suspensi…</option>
+                {SUSPENSION_OPTIONS.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+
+              <label className="label" htmlFor="km" style={{ marginTop: 10 }}>
+                KM
+              </label>
+              <input
+                id="km"
+                className="input"
+                placeholder="65.000"
+                inputMode="numeric"
+                value={km}
+                onChange={(e) => setKm(formatThousands(e.target.value))}
+              />
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                <button
+                  className="btn"
+                  type="button"
+                  style={{ flex: '0 0 auto' }}
+                  onClick={() => setStep(1)}
+                  disabled={submitting}
+                >
+                  Kembali
+                </button>
+                <button
+                  className="btn btn--primary"
+                  type="submit"
+                  disabled={!canSubmit || submitting}
+                  style={{ flex: 1 }}
+                >
+                  {submitting ? 'Mengirim…' : 'Kirim request'}
+                </button>
+              </div>
+            </>
+          )}
         </form>
       </div>
 

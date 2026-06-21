@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider } from './state/AuthContext.jsx'
+import { AuthProvider, useAuth } from './state/AuthContext.jsx'
 import { RequireAuth } from './ui/RequireAuth.jsx'
 import { RequireRole } from './ui/RequireRole.jsx'
 import { LoginPage } from './screens/auth/LoginPage.jsx'
@@ -10,6 +10,12 @@ import { PricelistPage } from './screens/app/PricelistPage.jsx'
 import { TshopAdminPage } from './screens/app/TshopAdminPage.jsx'
 import { TradeInRequestsPage } from './screens/app/TradeInRequestsPage.jsx'
 import { NotAuthorizedPage } from './screens/app/NotAuthorizedPage.jsx'
+
+function OverviewRoute() {
+  const { role } = useAuth()
+  if (role === 'otoxpert') return <Navigate to="/app/customers" replace />
+  return <DashboardHome />
+}
 
 export default function App() {
   return (
@@ -26,13 +32,13 @@ export default function App() {
             </RequireAuth>
           }
         >
-          <Route index element={<DashboardHome />} />
+          <Route index element={<OverviewRoute />} />
           <Route path="not-authorized" element={<NotAuthorizedPage />} />
 
           <Route
             path="customers"
             element={
-              <RequireRole allow={['supervisor', 'aftersales']}>
+              <RequireRole allow={['supervisor', 'aftersales', 'otoxpert']}>
                 <CustomersPage />
               </RequireRole>
             }
@@ -56,7 +62,7 @@ export default function App() {
           <Route
             path="tradein-requests"
             element={
-              <RequireRole allow={['tradein', 'supervisor']}>
+              <RequireRole allow={['tradein', 'supervisor', 'otoxpert']}>
                 <TradeInRequestsPage />
               </RequireRole>
             }

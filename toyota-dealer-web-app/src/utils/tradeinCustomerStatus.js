@@ -36,6 +36,10 @@ export function customerTradeInPriceLabel(r) {
       r.fixedPrice != null && Number(r.fixedPrice) > 0 ? formatIdr(Number(r.fixedPrice)) : '-'
     return `Dealing — Harga fix ${fp}`
   }
+  if (stage === 'pre_inspection') {
+    if (!estimatePresent(r)) return 'Menunggu Estimasi Harga'
+    return 'Pre Inspeksi — Menunggu jadwal'
+  }
   // Status Baru: tampilkan angka estimasi admin (bukan teks "Menunggu jadwal inspeksi").
   if (stage === 'new') {
     if (!estimatePresent(r)) return 'Menunggu Estimasi Harga'
@@ -50,6 +54,7 @@ export function pipelineLabel(r) {
   const map = {
     new: 'Baru',
     contacted: 'Dihubungi',
+    pre_inspection: 'Pre Inspeksi',
     inspected: 'Inspeksi',
     dealing: 'Dealing',
     cancel: 'Batal',

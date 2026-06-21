@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { listenTradeinRequests } from '../../firestore/tradeinRequests.js'
+import { deriveTradeinAdminStage } from '../../utils/tradeinStages.js'
 import {
   listenRegistrationRequests,
   updateRegistrationRequest,
@@ -16,22 +17,20 @@ function canReadRegistrationRequests(role) {
 }
 
 function deriveTradeinStage(r) {
-  if (r.adminStage) return r.adminStage
-  if (r.status === 'cancelled' || r.status === 'canceled') return 'cancel'
-  if (r.status === 'contacted') return 'contacted'
-  return 'new'
+  return deriveTradeinAdminStage(r)
 }
 
 const TRADEIN_PIE_STAGES = [
   { id: 'new', label: 'New', color: '#3b82f6' },
   { id: 'contacted', label: 'Contacted', color: '#8b5cf6' },
+  { id: 'pre_inspection', label: 'Pre Inspection', color: '#06b6d4' },
   { id: 'inspected', label: 'Inspected', color: '#f59e0b' },
   { id: 'dealing', label: 'Dealing', color: '#22c55e' },
   { id: 'cancel', label: 'Cancel', color: '#ef4444' },
 ]
 
 function tradeinCountsByStage(rows) {
-  const c = { new: 0, contacted: 0, inspected: 0, dealing: 0, cancel: 0 }
+  const c = { new: 0, contacted: 0, pre_inspection: 0, inspected: 0, dealing: 0, cancel: 0 }
   for (const r of rows) {
     const s = deriveTradeinStage(r)
     if (Object.prototype.hasOwnProperty.call(c, s)) c[s] += 1

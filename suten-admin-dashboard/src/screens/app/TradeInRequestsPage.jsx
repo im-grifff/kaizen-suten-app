@@ -3,30 +3,21 @@ import * as XLSX from 'xlsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { deleteTradeinRequest, listenTradeinRequests, updateTradeinRequest, updateTradeinRequestRoot } from '../../firestore/tradeinRequests.js'
 import { normalizePlate } from '../../utils/plateFormat.js'
+import {
+  adminStageToStatus,
+  deriveTradeinAdminStage,
+  TRADEIN_STAGE_LABELS,
+  TRADEIN_TABS,
+} from '../../utils/tradeinStages.js'
+import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '../../utils/channel.js'
+import { formatThousands } from '../../utils/numberFormat.js'
 import { Timestamp } from 'firebase/firestore'
 
-const TABS = [
-  { id: 'new', label: 'New' },
-  { id: 'contacted', label: 'Contacted' },
-  { id: 'inspected', label: 'Inspected' },
-  { id: 'dealing', label: 'Dealing' },
-  { id: 'cancel', label: 'Cancel' },
-  { id: 'all', label: 'All' },
-]
-
-const STAGE_LABELS = {
-  new: 'New',
-  contacted: 'Contacted',
-  inspected: 'Inspected',
-  dealing: 'Dealing',
-  cancel: 'Cancel',
-}
+const TABS = TRADEIN_TABS
+const STAGE_LABELS = TRADEIN_STAGE_LABELS
 
 function deriveAdminStage(r) {
-  if (r.adminStage) return r.adminStage
-  if (r.status === 'cancelled' || r.status === 'canceled') return 'cancel'
-  if (r.status === 'contacted') return 'contacted'
-  return 'new'
+  return deriveTradeinAdminStage(r)
 }
 
 function toDigits(raw) {
@@ -62,10 +53,21 @@ function rowSalesName(r) {
   return String(r.salesName || '').trim()
 }
 
-function stageToStatus(adminStage) {
-  if (adminStage === 'cancel') return 'cancelled'
-  if (adminStage === 'new') return 'new'
-  return 'contacted'
+function matchesSearch(r, q) {
+  if (!q) return true
+  const hay = [
+    r.customerName || '',
+    getCustomerPhone(r),
+    r.plateNumber || normalizePlate(r.plateKey || ''),
+    unitSummary(r),
+    rowSalesName(r),
+  ]
+    .join(' ')
+    .toLowerCase()
+  if (hay.includes(q)) return true
+  const plate = normalizePlate(r.plateNumber || r.plateKey || '')
+  const qPlate = normalizePlate(q)
+  return Boolean(qPlate) && plate.includes(qPlate)
 }
 
 function toNumberOrNull(raw) {
@@ -95,12 +97,15 @@ export function TradeInRequestsPage() {
   const [rows, setRows] = useState([])
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('new')
+  const [channelFilter, setChannelFilter] = useState('all')
+  const [search, setSearch] = useState('')
   const [estimates, setEstimates] = useState({})
   const [notesDraft, setNotesDraft] = useState({})
   const [fixedDraft, setFixedDraft] = useState({})
   const [cancelDraft, setCancelDraft] = useState({})
   const [savingId, setSavingId] = useState('')
   const isRoot = role === 'root'
+  const isOtoxpert = role === 'otoxpert'
 
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState('')
@@ -108,6 +113,7 @@ export function TradeInRequestsPage() {
   const [editForm, setEditForm] = useState({
     createdAt: '',
     adminStage: 'new',
+    sourceChannel: '',
     customerName: '',
     customerPhone: '',
     customerWaKey: '',
@@ -147,7 +153,7 @@ export function TradeInRequestsPage() {
         if (next[r.id]) continue
         const low = r.estimateLow ?? r.estimasiLow ?? ''
         const high = r.estimateHigh ?? r.estimasiHigh ?? ''
-        next[r.id] = { low: String(low || ''), high: String(high || '') }
+        next[r.id] = { low: formatThousands(low), high: formatThousands(high) }
       }
       return next
     })
@@ -163,7 +169,7 @@ export function TradeInRequestsPage() {
       const next = { ...prev }
       for (const r of rows) {
         if (next[r.id] != null) continue
-        if (r.fixedPrice != null && Number(r.fixedPrice) > 0) next[r.id] = String(r.fixedPrice)
+        if (r.fixedPrice != null && Number(r.fixedPrice) > 0) next[r.id] = formatThousands(r.fixedPrice)
         else next[r.id] = ''
       }
       return next
@@ -184,14 +190,23 @@ export function TradeInRequestsPage() {
   }, [rows])
 
   const filtered = useMemo(() => {
-    if (tab === 'all') return rows
-    return rows.filter((r) => deriveAdminStage(r) === tab)
-  }, [rows, tab])
+    let list = tab === 'all' ? rows : rows.filter((r) => deriveAdminStage(r) === tab)
+    if (isOtoxpert) {
+      list = list.filter((r) => requestChannel(r) === CHANNEL_SECOND)
+    } else if (channelFilter !== 'all') {
+      list = list.filter((r) => requestChannel(r) === channelFilter)
+    }
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter((r) => matchesSearch(r, q))
+    }
+    return list
+  }, [rows, tab, channelFilter, search, isOtoxpert])
 
   /** Kolom harga fix + alasan hanya dari tab Inspected ke bawah, atau tab All (read-only). */
   const showFixAndReason =
     tab === 'inspected' || tab === 'dealing' || tab === 'cancel' || tab === 'all'
-  const estimateEditable = tab === 'new'
+  const estimateEditable = tab === 'new' && !isOtoxpert
   const isAllTab = tab === 'all'
 
   const isTradeInOnly = role === 'tradein'
@@ -265,6 +280,7 @@ export function TradeInRequestsPage() {
       Created: r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('id-ID') : '',
       Stage: STAGE_LABELS[deriveAdminStage(r)] || deriveAdminStage(r),
       Customer: r.customerName || '',
+      Channel: channelLabel(requestChannel(r)),
       WA: shouldHideCustomerWaForViewer(r) ? '' : getCustomerPhone(r) || '',
       'Plat Nomor': r.plateNumber || normalizePlate(r.plateKey || '') || '',
       'Merk / Model': r.merkModel || r.carType || '',
@@ -378,8 +394,7 @@ export function TradeInRequestsPage() {
     }
     setErr('')
     const salesFromCustomer = rowSalesName(r)
-    const stageLabel =
-      tab === 'new' ? 'New' : tab === 'contacted' ? 'Contacted' : tab === 'inspected' ? 'Inspected' : tab
+    const stageLabel = STAGE_LABELS[tab] || tab
     const lines = [
       `Halo${salesFromCustomer ? ` ${salesFromCustomer}` : ''},`,
       '',
@@ -419,6 +434,7 @@ export function TradeInRequestsPage() {
     setEditForm({
       createdAt: toDatetimeLocalValue(r.createdAt),
       adminStage: deriveAdminStage(r),
+      sourceChannel: requestChannel(r) || '',
       customerName: r.customerName || '',
       customerPhone: r.customerPhone || '',
       customerWaKey: r.customerWaKey || '',
@@ -427,16 +443,16 @@ export function TradeInRequestsPage() {
       transmission: r.transmission || '',
       year: r.year || '',
       color: r.color || '',
-      km: r.km || '',
+      km: formatThousands(r.km || ''),
       stnkMonth: r.stnkMonth || '',
       bpkbStatus: r.bpkbStatus || 'Tersedia',
-      expectLowPrice: r.expectLowPrice ?? '',
+      expectLowPrice: formatThousands(r.expectLowPrice ?? ''),
       newCarModel: r.newCarModel || '',
       salesName: r.salesName || '',
-      estimateLow: r.estimateLow ?? '',
-      estimateHigh: r.estimateHigh ?? '',
+      estimateLow: formatThousands(r.estimateLow ?? ''),
+      estimateHigh: formatThousands(r.estimateHigh ?? ''),
       estimateNotes: r.estimateNotes || '',
-      fixedPrice: r.fixedPrice ?? '',
+      fixedPrice: formatThousands(r.fixedPrice ?? ''),
       cancelReason: r.cancelReason || '',
     })
     setEditOpen(true)
@@ -451,7 +467,8 @@ export function TradeInRequestsPage() {
       const adminStage = editForm.adminStage
       const patch = {
         adminStage,
-        status: stageToStatus(adminStage),
+        status: adminStageToStatus(adminStage),
+        sourceChannel: editForm.sourceChannel || '',
         customerName: String(editForm.customerName || '').trim(),
         customerPhone: String(editForm.customerPhone || editForm.customerWaKey || '').trim(),
         customerWaKey: String(editForm.customerWaKey || editForm.customerPhone || '').trim(),
@@ -505,7 +522,7 @@ export function TradeInRequestsPage() {
     <div>
       <div style={{ fontWeight: 900, fontSize: 18 }}>Trade In Requests</div>
       <div className="muted" style={{ marginTop: 6 }}>
-        Kelola pipeline: New → Contacted → Inspected → Dealing / Cancel.
+        Kelola pipeline: New → Contacted → Pre Inspection → Inspected → Dealing / Cancel.
       </div>
 
       {err ? (
@@ -552,15 +569,45 @@ export function TradeInRequestsPage() {
               )
             })}
           </div>
-          <button
-            type="button"
-            className="btn"
-            onClick={exportToExcel}
-            disabled={!filtered.length}
-            title="Download data tab ini ke Excel (.xlsx)"
-          >
-            Download Excel
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span className="muted" style={{ fontSize: 12 }}>Channel:</span>
+            {isOtoxpert ? (
+              <span className="btn" style={{ pointerEvents: 'none' }}>OtoExpert</span>
+            ) : (
+              <select
+                className="input"
+                style={{ width: 150 }}
+                value={channelFilter}
+                onChange={(e) => setChannelFilter(e.target.value)}
+              >
+                <option value="all">Semua</option>
+                {CHANNEL_OPTIONS.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              className="btn"
+              onClick={exportToExcel}
+              disabled={!filtered.length}
+              title="Download data tab ini ke Excel (.xlsx)"
+            >
+              Download Excel
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <input
+            className="input"
+            style={{ width: 360, maxWidth: '100%' }}
+            placeholder="Cari customer, WA, plat, unit, atau sales…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
 
         <div style={{ overflowX: 'auto', marginTop: 14 }}>
@@ -575,11 +622,12 @@ export function TradeInRequestsPage() {
                   'Unit',
                   'Detail',
                   'Sales',
+                  'Channel',
                   ...(isAllTab ? ['Stage'] : []),
                   'Estimasi',
                   ...(showFixAndReason ? ['Harga fix', 'Alasan'] : []),
                   ...(isRoot ? ['Edit'] : []),
-                  ...(!isAllTab ? ['Aksi'] : []),
+                  ...(!isAllTab && !isOtoxpert ? ['Aksi'] : []),
                 ].map((h) => (
                   <th key={h} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
                     {h}
@@ -592,11 +640,11 @@ export function TradeInRequestsPage() {
                 <tr>
                   <td
                     colSpan={
-                      8 +
+                      9 +
                       (showFixAndReason ? 2 : 0) +
                       (isAllTab ? 1 : 0) +
                       (isRoot ? 1 : 0) +
-                      (!isAllTab ? 1 : 0)
+                      (!isAllTab && !isOtoxpert ? 1 : 0)
                     }
                     className="muted"
                     style={{ padding: 12 }}
@@ -655,6 +703,10 @@ export function TradeInRequestsPage() {
                         {rowSalesName(r) || '—'}
                       </td>
 
+                      <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {channelLabel(requestChannel(r))}
+                      </td>
+
                       {isAllTab ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                           {STAGE_LABELS[stageOfRow] || stageOfRow}
@@ -677,7 +729,7 @@ export function TradeInRequestsPage() {
                               onChange={
                                 estimateEditable
                                   ? (ev) => {
-                                      const v = ev.target.value
+                                      const v = formatThousands(ev.target.value)
                                       setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), low: v } }))
                                     }
                                   : undefined
@@ -698,7 +750,7 @@ export function TradeInRequestsPage() {
                               onChange={
                                 estimateEditable
                                   ? (ev) => {
-                                      const v = ev.target.value
+                                      const v = formatThousands(ev.target.value)
                                       setEstimates((s) => ({ ...s, [r.id]: { ...(s[r.id] || {}), high: v } }))
                                     }
                                   : undefined
@@ -743,7 +795,7 @@ export function TradeInRequestsPage() {
 
                       {showFixAndReason ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                          {tab === 'dealing' || tab === 'cancel' || isAllTab ? (
+                          {tab === 'dealing' || tab === 'cancel' || isAllTab || isOtoxpert ? (
                             <strong>
                               {r.fixedPrice != null && Number(r.fixedPrice) > 0
                                 ? `Rp${formatIdrCompact(String(r.fixedPrice))}`
@@ -757,7 +809,7 @@ export function TradeInRequestsPage() {
                                 placeholder="Rp fix"
                                 value={fixedDraft[r.id] ?? ''}
                                 onChange={(ev) =>
-                                  setFixedDraft((s) => ({ ...s, [r.id]: ev.target.value }))
+                                  setFixedDraft((s) => ({ ...s, [r.id]: formatThousands(ev.target.value) }))
                                 }
                               />
                               <button type="button" className="btn" onClick={() => persistFixed(r.id)}>
@@ -770,7 +822,7 @@ export function TradeInRequestsPage() {
 
                       {showFixAndReason ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                          {isAllTab ? (
+                          {isAllTab || isOtoxpert ? (
                             <span className="muted" style={{ whiteSpace: 'pre-wrap' }}>
                               {String(r.cancelReason || '').trim() || '—'}
                             </span>
@@ -812,7 +864,7 @@ export function TradeInRequestsPage() {
                         </td>
                       ) : null}
 
-                      {!isAllTab ? (
+                      {!isAllTab && !isOtoxpert ? (
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
                           {tab === 'new' ? (
@@ -855,6 +907,40 @@ export function TradeInRequestsPage() {
                             </>
                           ) : null}
                           {tab === 'contacted' ? (
+                            <>
+                              {isRootOrSupervisor ? (
+                                <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
+                                  WA ke sales
+                                </button>
+                              ) : null}
+                              {!tradeinHidesPipelineActions(r) ? (
+                                <>
+                                  <button type="button" className="btn btnPrimary" onClick={() => chatNew(r)}>
+                                    Chat WhatsApp
+                                  </button>
+                                  <button type="button" className="btn" onClick={() => setStage(r.id, 'pre_inspection')}>
+                                    Pindah ke Pre Inspection
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => {
+                                      const reason =
+                                        window.prompt('Alasan pembatalan:', '')?.trim() || 'Dibatalkan'
+                                      void setStage(r.id, 'cancel', { cancelReason: reason })
+                                    }}
+                                  >
+                                    Batalkan
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="muted" style={{ fontSize: 11 }}>
+                                  Hanya isi estimasi/harga
+                                </span>
+                              )}
+                            </>
+                          ) : null}
+                          {tab === 'pre_inspection' ? (
                             <>
                               {isRootOrSupervisor ? (
                                 <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
@@ -1001,13 +1087,31 @@ export function TradeInRequestsPage() {
                     value={editForm.adminStage}
                     onChange={(e) => setEditForm((s) => ({ ...s, adminStage: e.target.value }))}
                   >
-                    {['new', 'contacted', 'inspected', 'dealing', 'cancel'].map((s) => (
+                    {['new', 'contacted', 'pre_inspection', 'inspected', 'dealing', 'cancel'].map((s) => (
                       <option key={s} value={s}>
                         {STAGE_LABELS[s] || s}
                       </option>
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="muted" style={{ fontSize: 12 }}>
+                  Channel
+                </label>
+                <select
+                  className="input"
+                  value={editForm.sourceChannel}
+                  onChange={(e) => setEditForm((s) => ({ ...s, sourceChannel: e.target.value }))}
+                >
+                  <option value="">—</option>
+                  {CHANNEL_OPTIONS.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -1105,8 +1209,9 @@ export function TradeInRequestsPage() {
                     </label>
                     <input
                       className="input"
+                      inputMode="numeric"
                       value={editForm.km}
-                      onChange={(e) => setEditForm((s) => ({ ...s, km: e.target.value }))}
+                      onChange={(e) => setEditForm((s) => ({ ...s, km: formatThousands(e.target.value) }))}
                     />
                   </div>
                   <div>
@@ -1137,7 +1242,7 @@ export function TradeInRequestsPage() {
                       className="input"
                       inputMode="numeric"
                       value={editForm.expectLowPrice}
-                      onChange={(e) => setEditForm((s) => ({ ...s, expectLowPrice: e.target.value }))}
+                      onChange={(e) => setEditForm((s) => ({ ...s, expectLowPrice: formatThousands(e.target.value) }))}
                     />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
@@ -1164,7 +1269,7 @@ export function TradeInRequestsPage() {
                       className="input"
                       inputMode="numeric"
                       value={editForm.estimateLow}
-                      onChange={(e) => setEditForm((s) => ({ ...s, estimateLow: e.target.value }))}
+                      onChange={(e) => setEditForm((s) => ({ ...s, estimateLow: formatThousands(e.target.value) }))}
                     />
                   </div>
                   <div>
@@ -1175,7 +1280,7 @@ export function TradeInRequestsPage() {
                       className="input"
                       inputMode="numeric"
                       value={editForm.estimateHigh}
-                      onChange={(e) => setEditForm((s) => ({ ...s, estimateHigh: e.target.value }))}
+                      onChange={(e) => setEditForm((s) => ({ ...s, estimateHigh: formatThousands(e.target.value) }))}
                     />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
@@ -1197,7 +1302,7 @@ export function TradeInRequestsPage() {
                       className="input"
                       inputMode="numeric"
                       value={editForm.fixedPrice}
-                      onChange={(e) => setEditForm((s) => ({ ...s, fixedPrice: e.target.value }))}
+                      onChange={(e) => setEditForm((s) => ({ ...s, fixedPrice: formatThousands(e.target.value) }))}
                     />
                   </div>
                   <div>

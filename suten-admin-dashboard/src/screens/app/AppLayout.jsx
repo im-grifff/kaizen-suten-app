@@ -63,10 +63,12 @@ export function AppLayout() {
   }
 
   const isRoot = role === 'root'
-  const showCustomers = isRoot || role === 'supervisor' || role === 'aftersales'
+  const isOtoxpert = role === 'otoxpert'
+  const showOverview = !isOtoxpert
+  const showCustomers = isRoot || isOtoxpert || role === 'supervisor' || role === 'aftersales'
   const showPricelist = isRoot || role === 'supervisor'
   const showTshop = isRoot || role === 'aftersales'
-  const showTradein = isRoot || role === 'tradein' || role === 'supervisor'
+  const showTradein = isRoot || isOtoxpert || role === 'tradein' || role === 'supervisor'
 
   return (
     <div style={{ minHeight: '100svh', display: 'grid', gridTemplateColumns: '260px 1fr' }}>
@@ -92,7 +94,7 @@ export function AppLayout() {
         </div>
 
         <nav style={{ marginTop: 16, display: 'grid', gap: 6 }}>
-          <NavItem to="/app" label="Overview" />
+          {showOverview ? <NavItem to="/app" label="Overview" /> : null}
           {showCustomers ? <NavItem to="/app/customers" label="Customers" /> : null}
           {showPricelist ? <NavItem to="/app/pricelist" label="Pricelist" /> : null}
           {showTshop ? <NavItem to="/app/tshop" label="Tshop" /> : null}

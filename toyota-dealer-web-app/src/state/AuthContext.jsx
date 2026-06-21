@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { getDemoUserSnapshot } from '../demo/demoData.js'
 import { isValidWaKey, normalizeWaKey } from '../utils/waPhoneFormat.js'
+import { getChannelOrDefault } from '../utils/channel.js'
 
 const demoMode =
   import.meta.env.VITE_DEMO_MODE === 'true' ||
@@ -106,8 +107,10 @@ export function AuthProvider({ children }) {
     const u = await ensureAnonAuth()
     setAuthUser(u)
 
+    const channel = getChannelOrDefault()
+
     const { ensureWaCustomer } = await import('../firestore/waCustomers.js')
-    const { displayName } = await ensureWaCustomer({ waKey, displayNameAttempt: nameTrim })
+    const { displayName } = await ensureWaCustomer({ waKey, displayNameAttempt: nameTrim, channel })
 
     const { setWaSession } = await import('../firestore/waSession.js')
     await setWaSession({ uid: u.uid, waKey, displayName })

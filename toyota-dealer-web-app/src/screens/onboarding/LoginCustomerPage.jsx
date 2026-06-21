@@ -19,7 +19,7 @@ export function LoginCustomerPage() {
     setLoading(true)
     try {
       await loginWithWaProfile({ name: nameInput, waRaw: waInput })
-      nav('/app', { replace: true })
+      nav('/app/trade-in', { replace: true })
     } catch (err) {
       setError(err?.message || 'Gagal masuk')
     } finally {
