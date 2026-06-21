@@ -180,7 +180,7 @@ export function CustomersPage() {
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <span className="muted" style={{ fontSize: 12 }}>Channel:</span>
             {isOtoxpert ? (
-              <span className="btn" style={{ pointerEvents: 'none' }}>OtoExpert</span>
+              <span className="btn" style={{ pointerEvents: 'none' }}>OtoXpert</span>
             ) : (
               <select
                 className="input"

@@ -11,7 +11,7 @@ import { TshopPage } from './screens/main/TshopPage.jsx'
 import { captureChannelFromLocation } from './utils/channel.js'
 
 /**
- * Menangkap channel (Dealer/OtoExpert) dari URL sedini mungkin, sebelum
+ * Menangkap channel (Dealer/OtoXpert) dari URL sedini mungkin, sebelum
  * PublicOnlyRoute sempat me-redirect customer yang sudah login. Channel
  * disimpan ke localStorage agar terbaca saat login & submit trade-in.
  */
@@ -38,6 +38,15 @@ export default function App() {
             </PublicOnlyRoute>
           }
         />
+        <Route
+          path="/access/otoxpert"
+          element={
+            <PublicOnlyRoute>
+              <LoginCustomerPage />
+            </PublicOnlyRoute>
+          }
+        />
+        {/* Alias lama (typo) — tetap dukung QR/link yang sudah tersebar */}
         <Route
           path="/access/otoexpert"
           element={

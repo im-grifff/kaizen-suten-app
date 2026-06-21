@@ -1,18 +1,18 @@
 /**
  * Sumber customer (acquisition / source channel):
  * - first  = Dealer
- * - second = OtoExpert
+ * - second = OtoXpert
  */
 export const CHANNEL_FIRST = 'first'
 export const CHANNEL_SECOND = 'second'
 
 export const CHANNEL_OPTIONS = [
   { id: CHANNEL_FIRST, label: 'Dealer' },
-  { id: CHANNEL_SECOND, label: 'OtoExpert' },
+  { id: CHANNEL_SECOND, label: 'OtoXpert' },
 ]
 
 export function channelLabel(c) {
-  if (c === CHANNEL_SECOND) return 'OtoExpert'
+  if (c === CHANNEL_SECOND) return 'OtoXpert'
   if (c === CHANNEL_FIRST) return 'Dealer'
   return '-'
 }

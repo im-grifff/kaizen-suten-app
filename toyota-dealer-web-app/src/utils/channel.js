@@ -1,14 +1,14 @@
 /**
  * Sumber customer (acquisition channel):
  * - first  = Dealer (default, deployment utama)
- * - second = OtoExpert (akses via QR/link khusus /access/otoexpert)
+ * - second = OtoXpert (akses via QR/link khusus /access/otoxpert)
  */
 export const CHANNEL_FIRST = 'first'
 export const CHANNEL_SECOND = 'second'
 export const CHANNEL_STORAGE_KEY = 'suten_channel'
 
 export function channelLabel(c) {
-  if (c === CHANNEL_SECOND) return 'OtoExpert'
+  if (c === CHANNEL_SECOND) return 'OtoXpert'
   if (c === CHANNEL_FIRST) return 'Dealer'
   return '-'
 }
@@ -22,9 +22,12 @@ export function detectChannelFromLocation(loc) {
   const search = String(loc?.search || '').toLowerCase()
 
   const isSecond =
+    path.includes('/otoxpert') ||
     path.includes('/otoexpert') ||
+    /[?&]src=otoxpert\b/.test(search) ||
     /[?&]src=otoexpert\b/.test(search) ||
     /[?&]src=second\b/.test(search) ||
+    /[?&]channel=otoxpert\b/.test(search) ||
     /[?&]channel=otoexpert\b/.test(search) ||
     /[?&]channel=second\b/.test(search)
   if (isSecond) return CHANNEL_SECOND
