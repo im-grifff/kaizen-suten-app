@@ -51,7 +51,14 @@ export function LoginPage() {
   return (
     <div className="container" style={{ minHeight: '100svh', display: 'grid', placeItems: 'center' }}>
       <div className="card" style={{ width: 'min(420px, 100%)', padding: 18 }}>
-        <div style={{ fontWeight: 900, fontSize: 18 }}>SUTEN Admin Dashboard</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <img
+            src="/logo.png"
+            alt="SUTEN"
+            style={{ height: 48, width: 48, objectFit: 'cover', borderRadius: 12, display: 'block' }}
+          />
+          <div style={{ fontWeight: 900, fontSize: 18 }}>SUTEN Admin Dashboard</div>
+        </div>
         <div className="muted" style={{ marginTop: 6 }}>
           Login admin (Supervisor / Aftersales / Trade In)
         </div>

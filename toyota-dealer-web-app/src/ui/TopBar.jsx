@@ -23,8 +23,12 @@ export function TopBar() {
         </button>
       </div>
       <div className="topbar__right">
-        <div className="topbar__brand">
-          <span className="topbar__mark">SU</span>
+        <div className="topbar__brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <img
+            src="/logo.png"
+            alt="SUTEN"
+            style={{ height: 32, width: 32, objectFit: 'cover', borderRadius: 8, display: 'block' }}
+          />
           <span className="topbar__name">SUTEN</span>
         </div>
       </div>

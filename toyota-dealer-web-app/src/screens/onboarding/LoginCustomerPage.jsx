@@ -31,7 +31,11 @@ export function LoginCustomerPage() {
     <div className="screen">
       <div className="card">
         <div className="brand">
-          <div className="brand__mark">SUTEN</div>
+          <img
+            src="/logo.png"
+            alt="SUTEN"
+            style={{ height: 56, width: 56, objectFit: 'cover', borderRadius: 14, display: 'block' }}
+          />
           <div className="brand__text">
             <div className="brand__title">SUTEN</div>
             <div className="brand__subtitle">TOYOTA TENDEAN MANADO</div>

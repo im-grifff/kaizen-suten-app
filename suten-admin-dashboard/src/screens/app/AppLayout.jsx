@@ -85,7 +85,14 @@ export function AppLayout() {
           flexDirection: 'column',
         }}
       >
-        <div style={{ fontWeight: 900, letterSpacing: 0.2 }}>SUTEN Admin</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img
+            src="/logo.png"
+            alt="SUTEN"
+            style={{ height: 36, width: 36, objectFit: 'cover', borderRadius: 10, display: 'block' }}
+          />
+          <div style={{ fontWeight: 900, letterSpacing: 0.2 }}>SUTEN Admin</div>
+        </div>
         <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
           Role: <span style={{ color: 'var(--text)' }}>{role || '-'}</span>
         </div>
