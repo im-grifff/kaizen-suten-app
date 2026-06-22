@@ -127,6 +127,8 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey
           == request.resource.data.customerWaKey;
       allow update: if isRoot() || roleIn(['tradein', 'supervisor']);
+      // Hapus request trade-in: hanya root (fitur Edit/Hapus di admin).
+      allow delete: if isRoot();
       // Customer boleh menekan "Request Inspeksi" dari app-nya:
       // hanya untuk memindahkan stage `new` → `contacted` dan hanya jika estimasi admin sudah ada.
       allow update: if isCustomerApp()
