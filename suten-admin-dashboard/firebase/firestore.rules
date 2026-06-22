@@ -100,7 +100,12 @@ service cloud.firestore {
       // saat UID anon baru (belum ada wa_sessions). Memaksa cocok dengan wa_sessions dulu
       // memblokir login ulang / perangkat lain. Data di dokumen ini terbatas (nama tampilan).
       allow read: if isCustomerApp();
-      allow update: if false;
+      // Update terbatas: app customer hanya boleh memperbarui channel akses
+      // (lastChannel / acquisitionChannel) + updatedAt pada dokumennya sendiri.
+      allow update: if isCustomerApp()
+        && request.resource.data.waKey == resource.data.waKey
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['lastChannel', 'acquisitionChannel', 'updatedAt']);
     }
 
     // Index plat → request trade-in. Doc ID = plateKey (canonical, UPPER tanpa spasi).
