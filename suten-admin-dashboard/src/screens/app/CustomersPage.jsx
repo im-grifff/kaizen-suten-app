@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Timestamp } from 'firebase/firestore'
 import { useAuth } from '../../state/AuthContext.jsx'
-import { listenTradeinRequests, updateTradeinRequest } from '../../firestore/tradeinRequests.js'
+import {
+  deleteTradeinRequest,
+  listenTradeinRequests,
+  updateTradeinRequest,
+  updateTradeinRequestRoot,
+} from '../../firestore/tradeinRequests.js'
 import { normalizePlate } from '../../utils/plateFormat.js'
-import { deriveTradeinAdminStage, TRADEIN_STAGE_LABELS } from '../../utils/tradeinStages.js'
+import { adminStageToStatus, deriveTradeinAdminStage, TRADEIN_STAGE_LABELS } from '../../utils/tradeinStages.js'
 import { getInsuranceTypeOptions, INSURANCE_TERM_OPTIONS } from '../../utils/insuranceTypes.js'
 import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '../../utils/channel.js'
+import { formatThousands } from '../../utils/numberFormat.js'
 
 const TABS = [
   { id: 'all', label: 'All Customer' },
@@ -17,6 +24,51 @@ function toDigits(raw) {
 
 function getCustomerPhone(r) {
   return String(r.customerPhone || r.customerWaKey || '').replace(/\D/g, '')
+}
+
+function toNumberOrNull(raw) {
+  const digits = String(raw ?? '').replace(/[^\d]/g, '')
+  if (!digits) return null
+  const n = Number(digits)
+  return Number.isFinite(n) ? n : null
+}
+
+function toDatetimeLocalValue(ts) {
+  const d = ts?.toDate ? ts.toDate() : ts instanceof Date ? ts : null
+  if (!d) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function fromDatetimeLocalValue(v) {
+  const s = String(v || '').trim()
+  if (!s) return null
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return null
+  return d
+}
+
+const EMPTY_EDIT_FORM = {
+  createdAt: '',
+  adminStage: 'new',
+  sourceChannel: '',
+  customerName: '',
+  customerWaKey: '',
+  customerPhone: '',
+  plateNumber: '',
+  salesName: '',
+  merkModel: '',
+  transmission: '',
+  year: '',
+  color: '',
+  km: '',
+  stnkMonth: '',
+  bpkbStatus: 'Tersedia',
+  expectLowPrice: '',
+  newCarModel: '',
+  insuranceName: '',
+  insuranceTermYears: '',
+  insuranceType: '',
 }
 
 function unitSummary(r) {
@@ -35,6 +87,7 @@ function formatCreated(ts) {
 export function CustomersPage() {
   const { role } = useAuth()
   const isOtoxpert = role === 'otoxpert'
+  const isRoot = role === 'root'
   const [rows, setRows] = useState([])
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('all')
@@ -42,6 +95,11 @@ export function CustomersPage() {
   const [channelFilter, setChannelFilter] = useState('all')
   const [savingId, setSavingId] = useState('')
   const [insuranceDraft, setInsuranceDraft] = useState({})
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editId, setEditId] = useState('')
+  const [editErr, setEditErr] = useState('')
+  const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM)
 
   useEffect(() => {
     const unsub = listenTradeinRequests({
@@ -122,6 +180,105 @@ export function CustomersPage() {
       const nextType = opts.includes(prev.insuranceType) ? prev.insuranceType : ''
       return { ...s, [id]: { ...prev, insuranceTermYears: value, insuranceType: nextType } }
     })
+  }
+
+  function openEditor(r) {
+    setEditErr('')
+    setEditId(r.id)
+    setEditForm({
+      createdAt: toDatetimeLocalValue(r.createdAt),
+      adminStage: deriveTradeinAdminStage(r),
+      sourceChannel: requestChannel(r) || '',
+      customerName: r.customerName || '',
+      customerWaKey: r.customerWaKey || r.customerPhone || '',
+      customerPhone: r.customerPhone || r.customerWaKey || '',
+      plateNumber: r.plateNumber || normalizePlate(r.plateKey || '') || '',
+      salesName: r.salesName || '',
+      merkModel: r.merkModel || '',
+      transmission: r.transmission || '',
+      year: r.year || '',
+      color: r.color || '',
+      km: formatThousands(r.km || ''),
+      stnkMonth: r.stnkMonth || '',
+      bpkbStatus: r.bpkbStatus || 'Tersedia',
+      expectLowPrice: formatThousands(r.expectLowPrice ?? ''),
+      newCarModel: r.newCarModel || '',
+      insuranceName: r.insuranceName || '',
+      insuranceTermYears: r.insuranceTermYears != null ? String(r.insuranceTermYears) : '',
+      insuranceType: r.insuranceType || '',
+    })
+    setEditOpen(true)
+  }
+
+  function closeEditor() {
+    setEditErr('')
+    setEditOpen(false)
+    setEditId('')
+  }
+
+  function onEditTermChange(value) {
+    setEditForm((s) => {
+      const opts = getInsuranceTypeOptions(value)
+      const nextType = opts.includes(s.insuranceType) ? s.insuranceType : ''
+      return { ...s, insuranceTermYears: value, insuranceType: nextType }
+    })
+  }
+
+  async function saveEditor() {
+    if (!isRoot || !editId) return
+    setEditErr('')
+    setSavingId(editId)
+    try {
+      const createdAtDate = fromDatetimeLocalValue(editForm.createdAt)
+      const adminStage = editForm.adminStage
+      const termRaw = editForm.insuranceTermYears
+      const patch = {
+        adminStage,
+        status: adminStageToStatus(adminStage),
+        sourceChannel: editForm.sourceChannel || '',
+        customerName: String(editForm.customerName || '').trim(),
+        customerWaKey: String(editForm.customerWaKey || editForm.customerPhone || '').trim(),
+        customerPhone: String(editForm.customerPhone || editForm.customerWaKey || '').trim(),
+        plateNumber: String(editForm.plateNumber || '').trim(),
+        salesName: String(editForm.salesName || '').trim(),
+        merkModel: String(editForm.merkModel || '').trim(),
+        transmission: String(editForm.transmission || '').trim(),
+        year: String(editForm.year || '').trim(),
+        color: String(editForm.color || '').trim(),
+        km: String(editForm.km || '').trim(),
+        stnkMonth: String(editForm.stnkMonth || '').trim(),
+        bpkbStatus: String(editForm.bpkbStatus || '').trim(),
+        expectLowPrice: String(editForm.expectLowPrice || '').trim(),
+        newCarModel: String(editForm.newCarModel || '').trim(),
+        insuranceName: String(editForm.insuranceName || '').trim(),
+        insuranceTermYears: termRaw !== '' ? Number(termRaw) : null,
+        insuranceType: String(editForm.insuranceType || '').trim(),
+      }
+      if (createdAtDate) patch.createdAt = Timestamp.fromDate(createdAtDate)
+
+      await updateTradeinRequestRoot(editId, patch)
+      closeEditor()
+    } catch (e) {
+      setEditErr(e?.message || 'Gagal menyimpan.')
+    } finally {
+      setSavingId('')
+    }
+  }
+
+  async function deleteEditor() {
+    if (!isRoot || !editId) return
+    const ok = window.confirm('Hapus data customer (request trade-in) ini? Tindakan ini tidak bisa dibatalkan.')
+    if (!ok) return
+    setEditErr('')
+    setSavingId(editId)
+    try {
+      await deleteTradeinRequest(editId)
+      closeEditor()
+    } catch (e) {
+      setEditErr(e?.message || 'Gagal menghapus.')
+    } finally {
+      setSavingId('')
+    }
   }
 
   return (
@@ -216,8 +373,9 @@ export function CustomersPage() {
                   ...(tab === 'dealing'
                     ? ['Nama Asuransi', 'Masa Asuransi', 'Jenis Asuransi', '']
                     : []),
-                ].map((h) => (
-                  <th key={h || 'save'} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
+                  ...(isRoot ? ['Edit'] : []),
+                ].map((h, i) => (
+                  <th key={h || `col-${i}`} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
                     {h}
                   </th>
                 ))}
@@ -226,7 +384,7 @@ export function CustomersPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td className="muted" style={{ padding: 12 }} colSpan={tab === 'dealing' ? 13 : 9}>
+                  <td className="muted" style={{ padding: 12 }} colSpan={(tab === 'dealing' ? 13 : 9) + (isRoot ? 1 : 0)}>
                     Tidak ada customer di tab ini.
                   </td>
                 </tr>
@@ -352,6 +510,14 @@ export function CustomersPage() {
                           </td>
                         </>
                       ) : null}
+
+                      {isRoot ? (
+                        <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          <button type="button" className="btn" onClick={() => openEditor(r)}>
+                            Edit
+                          </button>
+                        </td>
+                      ) : null}
                     </tr>
                   )
                 })
@@ -360,6 +526,267 @@ export function CustomersPage() {
           </table>
         </div>
       </div>
+
+      {isRoot && editOpen ? (
+        <div
+          className="modalOverlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Customer editor"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeEditor()
+          }}
+        >
+          <div className="modalCard">
+            <div style={{ fontWeight: 900, fontSize: 18 }}>Edit data customer</div>
+            <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+              ID: {editId}
+            </div>
+
+            {editErr ? (
+              <div
+                className="card"
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderColor: 'rgba(239, 68, 68, 0.5)',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  fontSize: 13,
+                }}
+              >
+                {editErr}
+              </div>
+            ) : null}
+
+            <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>Created</label>
+                  <input
+                    className="input"
+                    type="datetime-local"
+                    value={editForm.createdAt}
+                    onChange={(e) => setEditForm((s) => ({ ...s, createdAt: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>Stage</label>
+                  <select
+                    className="input"
+                    value={editForm.adminStage}
+                    onChange={(e) => setEditForm((s) => ({ ...s, adminStage: e.target.value }))}
+                  >
+                    {['new', 'contacted', 'pre_inspection', 'inspected', 'dealing', 'cancel'].map((s) => (
+                      <option key={s} value={s}>
+                        {TRADEIN_STAGE_LABELS[s] || s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="muted" style={{ fontSize: 12 }}>Channel</label>
+                <select
+                  className="input"
+                  value={editForm.sourceChannel}
+                  onChange={(e) => setEditForm((s) => ({ ...s, sourceChannel: e.target.value }))}
+                >
+                  <option value="">—</option>
+                  {CHANNEL_OPTIONS.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>Customer name</label>
+                  <input
+                    className="input"
+                    value={editForm.customerName}
+                    onChange={(e) => setEditForm((s) => ({ ...s, customerName: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>WA / Phone</label>
+                  <input
+                    className="input"
+                    value={editForm.customerWaKey}
+                    onChange={(e) => setEditForm((s) => ({ ...s, customerWaKey: e.target.value, customerPhone: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>Plat nomor</label>
+                  <input
+                    className="input"
+                    value={editForm.plateNumber}
+                    onChange={(e) => setEditForm((s) => ({ ...s, plateNumber: e.target.value.toUpperCase() }))}
+                  />
+                </div>
+                <div>
+                  <label className="muted" style={{ fontSize: 12 }}>Sales</label>
+                  <input
+                    className="input"
+                    value={editForm.salesName}
+                    onChange={(e) => setEditForm((s) => ({ ...s, salesName: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: 12, background: 'rgba(255,255,255,0.04)' }}>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>Unit</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Merk / Model</label>
+                    <input
+                      className="input"
+                      value={editForm.merkModel}
+                      onChange={(e) => setEditForm((s) => ({ ...s, merkModel: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Transmisi</label>
+                    <input
+                      className="input"
+                      value={editForm.transmission}
+                      onChange={(e) => setEditForm((s) => ({ ...s, transmission: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Tahun</label>
+                    <input
+                      className="input"
+                      value={editForm.year}
+                      onChange={(e) => setEditForm((s) => ({ ...s, year: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Warna</label>
+                    <input
+                      className="input"
+                      value={editForm.color}
+                      onChange={(e) => setEditForm((s) => ({ ...s, color: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>KM</label>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      value={editForm.km}
+                      onChange={(e) => setEditForm((s) => ({ ...s, km: formatThousands(e.target.value) }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>STNK Bulan</label>
+                    <input
+                      className="input"
+                      value={editForm.stnkMonth}
+                      onChange={(e) => setEditForm((s) => ({ ...s, stnkMonth: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Status BPKB</label>
+                    <input
+                      className="input"
+                      value={editForm.bpkbStatus}
+                      onChange={(e) => setEditForm((s) => ({ ...s, bpkbStatus: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Ekspektasi terendah</label>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      value={editForm.expectLowPrice}
+                      onChange={(e) => setEditForm((s) => ({ ...s, expectLowPrice: formatThousands(e.target.value) }))}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="muted" style={{ fontSize: 12 }}>Mobil baru diincar</label>
+                    <input
+                      className="input"
+                      value={editForm.newCarModel}
+                      onChange={(e) => setEditForm((s) => ({ ...s, newCarModel: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: 12, background: 'rgba(255,255,255,0.04)' }}>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>Asuransi</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Nama Asuransi</label>
+                    <input
+                      className="input"
+                      value={editForm.insuranceName}
+                      onChange={(e) => setEditForm((s) => ({ ...s, insuranceName: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Masa Asuransi</label>
+                    <select
+                      className="input"
+                      value={editForm.insuranceTermYears}
+                      onChange={(e) => onEditTermChange(e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {INSURANCE_TERM_OPTIONS.map((y) => (
+                        <option key={y} value={String(y)}>
+                          {y} tahun
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 12 }}>Jenis Asuransi</label>
+                    <select
+                      className="input"
+                      value={editForm.insuranceType}
+                      disabled={!editForm.insuranceTermYears}
+                      onChange={(e) => setEditForm((s) => ({ ...s, insuranceType: e.target.value }))}
+                    >
+                      <option value="">—</option>
+                      {getInsuranceTypeOptions(editForm.insuranceTermYears).map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+                <button type="button" className="btn" onClick={closeEditor}>
+                  Close
+                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ borderColor: 'rgba(239, 68, 68, 0.6)', color: 'rgba(239, 68, 68, 0.95)' }}
+                    onClick={deleteEditor}
+                    disabled={savingId === editId}
+                  >
+                    Hapus
+                  </button>
+                  <button type="button" className="btn btnPrimary" onClick={saveEditor} disabled={savingId === editId}>
+                    Simpan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
