@@ -83,6 +83,19 @@ a {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
 }
 
+/* Opsi dropdown: latar gelap + teks terang agar kontras. */
+select option,
+select optgroup {
+  background-color: #111c33;
+  color: #ffffff;
+}
+
+select option:checked,
+select option:hover {
+  background-color: #1f2d4d;
+  color: #ffffff;
+}
+
 .muted {
   color: var(--muted);
 }

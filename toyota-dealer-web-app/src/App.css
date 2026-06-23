@@ -837,6 +837,19 @@ select.input {
   padding-right: 36px;
 }
 
+/* Opsi dropdown: latar gelap + teks terang agar kontras (foto contoh). */
+select option,
+select optgroup {
+  background-color: #111c33;
+  color: #ffffff;
+}
+
+select option:checked,
+select option:hover {
+  background-color: #1f2d4d;
+  color: #ffffff;
+}
+
 .alert--ok {
   border-color: rgba(34, 197, 94, 0.45);
   background: rgba(34, 197, 94, 0.12);
