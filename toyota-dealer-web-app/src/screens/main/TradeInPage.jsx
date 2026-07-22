@@ -15,6 +15,8 @@ import {
 import { normalizePlate } from '../../utils/plateFormat.js'
 import { getChannelOrDefault } from '../../utils/channel.js'
 import { formatThousands } from '../../utils/numberFormat.js'
+import { ComboBox } from '../../components/ComboBox.jsx'
+import { brandOptions, modelOptions, typeOptions } from '../../data/carCatalog.js'
 
 const DEMO_TRADEIN_KEY = 'demo_tradein_history_v1'
 
@@ -82,7 +84,9 @@ export function TradeInPage() {
 
   const [step, setStep] = useState(1)
 
-  const [merkModel, setMerkModel] = useState('')
+  const [merk, setMerk] = useState('')
+  const [model, setModel] = useState('')
+  const [tipe, setTipe] = useState('')
   const [transmission, setTransmission] = useState('Matic')
   const [year, setYear] = useState('')
   const [color, setColor] = useState('')
@@ -130,9 +134,14 @@ export function TradeInPage() {
 
   const isMatic = transmission === 'Matic'
 
+  const modelSuggestions = useMemo(() => modelOptions(merk), [merk])
+  const typeSuggestions = useMemo(() => typeOptions(merk, model), [merk, model])
+  const merkModel = useMemo(() => [merk, model, tipe].map((s) => s.trim()).filter(Boolean).join(' '), [merk, model, tipe])
+
   const canProceedStep1 = useMemo(() => {
     return (
-      merkModel.trim().length >= 2 &&
+      merk.trim().length >= 2 &&
+      model.trim().length >= 1 &&
       String(year).trim().length >= 2 &&
       color.trim().length >= 1 &&
       stnkMonth.trim().length >= 2 &&
@@ -140,7 +149,7 @@ export function TradeInPage() {
       newCarModel.trim().length >= 2 &&
       normalizePlate(plateNumber).length >= 4
     )
-  }, [merkModel, year, color, stnkMonth, expectLowPrice, newCarModel, plateNumber])
+  }, [merk, model, year, color, stnkMonth, expectLowPrice, newCarModel, plateNumber])
 
   const canSubmit = useMemo(() => {
     return (
@@ -180,6 +189,9 @@ export function TradeInPage() {
       customerWaKey,
       customerPhone: customerWaKey,
       customerName: customerDisplayName || 'Customer',
+      merk: merk.trim(),
+      model: model.trim(),
+      tipe: tipe.trim(),
       merkModel: merkModel.trim(),
       transmission,
       year: String(year).trim(),
@@ -227,7 +239,9 @@ export function TradeInPage() {
         await createTradeinRequest(payload)
         setDoneMsg('Request trade in terkirim.')
       }
-      setMerkModel('')
+      setMerk('')
+      setModel('')
+      setTipe('')
       setYear('')
       setColor('')
       setKm('')
@@ -318,14 +332,36 @@ export function TradeInPage() {
               />
 
               <label className="label" htmlFor="merk" style={{ marginTop: 10 }}>
-                Merk / Model
+                Merk
               </label>
-              <input
+              <ComboBox
                 id="merk"
-                className="input"
-                placeholder="Rush S GR Sport"
-                value={merkModel}
-                onChange={(e) => setMerkModel(e.target.value)}
+                value={merk}
+                onChange={setMerk}
+                options={brandOptions()}
+                placeholder="Toyota"
+              />
+
+              <label className="label" htmlFor="model" style={{ marginTop: 10 }}>
+                Model
+              </label>
+              <ComboBox
+                id="model"
+                value={model}
+                onChange={setModel}
+                options={modelSuggestions}
+                placeholder="Calya"
+              />
+
+              <label className="label" htmlFor="tipe" style={{ marginTop: 10 }}>
+                Tipe
+              </label>
+              <ComboBox
+                id="tipe"
+                value={tipe}
+                onChange={setTipe}
+                options={typeSuggestions}
+                placeholder="G A/T"
               />
 
               <label className="label" htmlFor="trans" style={{ marginTop: 10 }}>
