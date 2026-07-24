@@ -255,6 +255,61 @@
   padding: 14px 12px;
 }
 
+/* --- Combobox (dropdown bisa diketik) --- */
+.combo {
+  position: relative;
+}
+.combo__input {
+  padding-right: 40px; /* ruang untuk panah */
+}
+.combo__arrow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+.combo__arrow:hover {
+  color: var(--text);
+}
+.combo__list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #131b2b;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.combo__opt {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+.combo__opt:hover {
+  background: var(--surface-2);
+}
+.combo__opt.is-active {
+  background: rgba(239, 68, 68, 0.18);
+  color: var(--text);
+}
+
 .helper {
   margin-top: -6px;
 }

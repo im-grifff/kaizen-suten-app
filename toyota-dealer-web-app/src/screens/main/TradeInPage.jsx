@@ -79,6 +79,14 @@ function formatTs(ts) {
   return new Date().toLocaleString('id-ID')
 }
 
+/** Turunkan transmisi (Manual/Matic) dari string Tipe. Kosong jika tak terdeteksi. */
+function deriveTransmission(tipe) {
+  const s = String(tipe || '').toUpperCase()
+  if (/\bM\/?T\b|MANUAL/.test(s)) return 'Manual'
+  if (/\bA\/?T\b|\bCVT\b|MATIC|OTOMATIS|\bHEV\b|\bEV\b/.test(s)) return 'Matic'
+  return ''
+}
+
 export function TradeInPage() {
   const { authUser, customerWaKey, customerDisplayName, demoMode } = useAuth()
 
@@ -87,7 +95,6 @@ export function TradeInPage() {
   const [merk, setMerk] = useState('')
   const [model, setModel] = useState('')
   const [tipe, setTipe] = useState('')
-  const [transmission, setTransmission] = useState('Matic')
   const [year, setYear] = useState('')
   const [color, setColor] = useState('')
   const [km, setKm] = useState('')
@@ -132,11 +139,24 @@ export function TradeInPage() {
     return () => unsub?.()
   }, [demoMode, customerWaKey])
 
+  // Transmisi diturunkan dari Tipe (mis. "G A/T" -> Matic, "G M/T" -> Manual).
+  const transmission = useMemo(() => deriveTransmission(tipe), [tipe])
   const isMatic = transmission === 'Matic'
 
   const modelSuggestions = useMemo(() => modelOptions(merk), [merk])
   const typeSuggestions = useMemo(() => typeOptions(merk, model), [merk, model])
   const merkModel = useMemo(() => [merk, model, tipe].map((s) => s.trim()).filter(Boolean).join(' '), [merk, model, tipe])
+
+  // Cascade: ganti Merk -> reset Model & Tipe; ganti Model -> reset Tipe.
+  const onMerkChange = useCallback((v) => {
+    setMerk(v)
+    setModel('')
+    setTipe('')
+  }, [])
+  const onModelChange = useCallback((v) => {
+    setModel(v)
+    setTipe('')
+  }, [])
 
   const canProceedStep1 = useMemo(() => {
     return (
@@ -250,7 +270,6 @@ export function TradeInPage() {
       setNewCarModel('')
       setSalesName('')
       setPlateNumber('')
-      setTransmission('Matic')
       setBpkbStatus('Tersedia')
       setExteriorCondition('')
       setInteriorCondition('')
@@ -337,9 +356,9 @@ export function TradeInPage() {
               <ComboBox
                 id="merk"
                 value={merk}
-                onChange={setMerk}
+                onChange={onMerkChange}
                 options={brandOptions()}
-                placeholder="Toyota"
+                placeholder="Pilih Merek Mobil"
               />
 
               <label className="label" htmlFor="model" style={{ marginTop: 10 }}>
@@ -348,9 +367,9 @@ export function TradeInPage() {
               <ComboBox
                 id="model"
                 value={model}
-                onChange={setModel}
+                onChange={onModelChange}
                 options={modelSuggestions}
-                placeholder="Calya"
+                placeholder="Pilih Model Mobil"
               />
 
               <label className="label" htmlFor="tipe" style={{ marginTop: 10 }}>
@@ -361,21 +380,8 @@ export function TradeInPage() {
                 value={tipe}
                 onChange={setTipe}
                 options={typeSuggestions}
-                placeholder="G A/T"
+                placeholder="Pilih Tipe Mobil"
               />
-
-              <label className="label" htmlFor="trans" style={{ marginTop: 10 }}>
-                Type / Transmisi
-              </label>
-              <select
-                id="trans"
-                className="input"
-                value={transmission}
-                onChange={(e) => setTransmission(e.target.value)}
-              >
-                <option value="Manual">Manual</option>
-                <option value="Matic">Matic</option>
-              </select>
 
               <label className="label" htmlFor="year" style={{ marginTop: 10 }}>
                 Tahun
