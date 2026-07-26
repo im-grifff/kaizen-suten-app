@@ -909,3 +909,22 @@ select option:hover {
   color: rgba(255, 255, 255, 0.85);
   font-size: 15px;
 }
+
+.tradeinContainer {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px 16px calc(90px + env(safe-area-inset-bottom));
+}
+
+.tradeinContainer .card {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 640px) {
+  .tradeinContainer {
+    padding: 10px 10px calc(90px + env(safe-area-inset-bottom));
+  }
+}
+
