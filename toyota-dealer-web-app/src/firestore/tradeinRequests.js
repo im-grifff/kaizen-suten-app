@@ -7,6 +7,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore'
@@ -41,11 +42,22 @@ export function listenTradeinRequestsForWa(waKey, { onData, onError }) {
     onData?.([])
     return () => {}
   }
-  const q = query(tradeinRequestsCol(), where('customerWaKey', '==', waKey), orderBy('createdAt', 'desc'))
+  // Query tanpa orderBy agar TIDAK membutuhkan composite index di Firebase Console
+  const q = query(tradeinRequestsCol(), where('customerWaKey', '==', waKey))
   return onSnapshot(
     q,
     (snap) => {
       const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      // Sort tanggal terbaru di sisi client secara instan
+      rows.sort((a, b) => {
+        const getMs = (val) => {
+          if (!val) return 0
+          if (val.toDate) return val.toDate().getTime()
+          if (typeof val === 'number') return val
+          return new Date(val).getTime() || 0
+        }
+        return getMs(b.createdAt) - getMs(a.createdAt)
+      })
       onData?.(rows)
     },
     (err) => onError?.(err),
@@ -63,27 +75,14 @@ export async function createTradeinRequest(payload) {
   if (!plateKey) throw new Error('Plat nomor wajib diisi.')
 
   const newReqRef = doc(tradeinRequestsCol())
-  const indexRef = doc(db, 'tradein_plate_index', plateKey)
 
-  await runTransaction(db, async (tx) => {
-    const indexSnap = await tx.get(indexRef)
-    if (indexSnap.exists()) {
-      throw new DuplicatePlateError(payload?.plateNumber || plateKey)
-    }
-    tx.set(newReqRef, {
-      ...payload,
-      plateKey,
-      adminStage: 'new',
-      status: 'new',
-      createdAt: serverTimestamp(),
-    })
-    tx.set(indexRef, {
-      plateKey,
-      requestId: newReqRef.id,
-      customerWaKey: payload?.customerWaKey || '',
-      customerUid: payload?.customerUid || '',
-      createdAt: serverTimestamp(),
-    })
+  await setDoc(newReqRef, {
+    ...payload,
+    plateKey,
+    adminStage: 'new',
+    status: 'new',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   })
 
   return newReqRef
