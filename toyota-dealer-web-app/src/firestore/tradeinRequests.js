@@ -7,7 +7,6 @@ import {
   query,
   runTransaction,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore'
@@ -75,14 +74,29 @@ export async function createTradeinRequest(payload) {
   if (!plateKey) throw new Error('Plat nomor wajib diisi.')
 
   const newReqRef = doc(tradeinRequestsCol())
+  const indexRef = doc(db, 'tradein_plate_index', plateKey)
 
-  await setDoc(newReqRef, {
-    ...payload,
-    plateKey,
-    adminStage: 'new',
-    status: 'new',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  // Transaksi menjaga 1 plat = 1 request (anti-duplikat / anti-spam submit).
+  await runTransaction(db, async (tx) => {
+    const idxSnap = await tx.get(indexRef)
+    if (idxSnap.exists()) {
+      throw new DuplicatePlateError(payload?.plateNumber || plateKey)
+    }
+    tx.set(newReqRef, {
+      ...payload,
+      plateKey,
+      adminStage: 'new',
+      status: 'new',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+    tx.set(indexRef, {
+      plateKey,
+      requestId: newReqRef.id,
+      customerUid: payload?.customerUid || '',
+      customerWaKey: payload?.customerWaKey || '',
+      createdAt: serverTimestamp(),
+    })
   })
 
   return newReqRef

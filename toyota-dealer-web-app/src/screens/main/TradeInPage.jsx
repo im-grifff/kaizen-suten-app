@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../state/AuthContext.jsx';
-import { createTradeinRequest, listenTradeinRequestsForWa, DuplicatePlateError } from '../../firestore/tradeinRequests.js';
+import { createTradeinRequest, listenTradeinRequestsForWa, DuplicatePlateError, isPlateAlreadyUsed } from '../../firestore/tradeinRequests.js';
 import { buildAppraisalFromConditions } from '../../lib/calculation.js';
 import { generateRecommendation, analyzeEngineSound } from '../../lib/ai.js';
 import { fetchVehicleServiceHistory } from '../../lib/vehicleServiceHistory.js';
@@ -297,6 +297,23 @@ export function TradeInPage() {
       const plateKey = plateRaw;
       const kmNum    = Number(String(km).replace(/[^\d]/g, '')) || 0;
       const vehicleYear = parseInt(String(year).trim()) || new Date().getFullYear() - 5;
+
+      // Anti-spam: cegah taksasi ganda untuk plat yang sama (sebelum panggilan AI yang mahal).
+      if (demoMode) {
+        const existing = loadDemoHistory(customerWaKey).find(
+          (rr) => normalizePlate(rr.plateKey || rr.plateNumber || '') === plateKey,
+        );
+        if (existing) {
+          setDuplicatePlate(plateRaw);
+          return;
+        }
+      } else if (plateKey) {
+        const alreadyUsed = await isPlateAlreadyUsed(plateRaw);
+        if (alreadyUsed) {
+          setDuplicatePlate(plateRaw);
+          return;
+        }
+      }
 
       // ── STEP 1: Riwayat servis resmi ──────────────────────────────────────
       let serviceHistory = [];
@@ -1127,6 +1144,56 @@ export function TradeInPage() {
           </div>
           <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#ffffff', background: 'rgba(0,0,0,0.4)', padding: 10, borderRadius: 8, marginTop: 4, overflowX: 'auto' }}>
             {calcError}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PLAT SUDAH TERDAFTAR (anti-duplikat / anti-spam submit) */}
+      {duplicatePlate && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDuplicatePlate('')
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 420,
+              width: '100%',
+              background: '#0d1322',
+              color: '#f8fafc',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 18,
+              padding: 22,
+              boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Plat sudah terdaftar</div>
+            <div style={{ fontSize: 14, color: '#cbd5e1', lineHeight: 1.5 }}>
+              Mobil dengan plat nomor <strong style={{ color: '#fff' }}>{duplicatePlate}</strong> sudah pernah diajukan
+              taksasi. Satu mobil cukup diajukan sekali — silakan cek riwayat pengajuan di bawah.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setDuplicatePlate('')}
+                style={{ padding: '10px 18px' }}
+              >
+                Mengerti
+              </button>
+            </div>
           </div>
         </div>
       )}
