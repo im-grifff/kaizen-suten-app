@@ -9,6 +9,7 @@ import { getDetailedEstimateForRepair } from '../../lib/flatRateMaster.js';
 import { brandOptions, modelOptions, typeOptions } from '../../data/carCatalog.js';
 import { lookupBasePrice } from '../../lib/vehicleMasterLookup.js';
 import { AppraisalResultModal } from '../../components/AppraisalResultModal.jsx';
+import { ComboBox } from '../../components/ComboBox.jsx';
 import { getChannelOrDefault } from '../../utils/channel.js';
 import { pipelineLabel } from '../../utils/tradeinCustomerStatus.js';
 
@@ -51,6 +52,14 @@ function formatTs(ts) {
   return new Date(ts).toLocaleString('id-ID');
 }
 
+/** Turunkan transmisi (Manual/Matic) dari string Tipe. Default Matic jika tak terdeteksi. */
+function deriveTransmission(tipe) {
+  const s = String(tipe || '').toUpperCase();
+  if (/\bM\/?T\b|MANUAL/.test(s)) return 'Manual';
+  if (/\bA\/?T\b|\bCVT\b|MATIC|OTOMATIS|\bHEV\b|\bEV\b/.test(s)) return 'Matic';
+  return 'Matic';
+}
+
 export const SELLING_BONUS_ITEMS = [
   { id: 'kunci_serep', label: '🔑 Kunci Serep Lengkap (+Rp 500.000)', value: 500000 },
   { id: 'buku_servis', label: '📜 Buku Servis & Manual Book Lengkap (+Rp 500.000)', value: 500000 },
@@ -68,7 +77,8 @@ export function TradeInPage() {
   const [merk, setMerk] = useState('Toyota');
   const [model, setModel] = useState('');
   const [tipe, setTipe] = useState('');
-  const [transmission, setTransmission] = useState('Matic');
+  // Transmisi diturunkan dari Tipe (mis. "G A/T" -> Matic, "G M/T" -> Manual).
+  const transmission = useMemo(() => deriveTransmission(tipe), [tipe]);
   const [year, setYear] = useState('');
   const [color, setColor] = useState('');
   const [plateNumber, setPlateNumber] = useState('');
@@ -148,6 +158,17 @@ export function TradeInPage() {
     () => [merk, model, tipe].map((s) => s.trim()).filter(Boolean).join(' '),
     [merk, model, tipe]
   );
+
+  // Cascade: ganti Merk -> reset Model & Tipe; ganti Model -> reset Tipe.
+  const onMerkChange = useCallback((v) => {
+    setMerk(v);
+    setModel('');
+    setTipe('');
+  }, []);
+  const onModelChange = useCallback((v) => {
+    setModel(v);
+    setTipe('');
+  }, []);
 
   // Step 0 validation
   const canProceedStep0 = useMemo(() => {
@@ -608,55 +629,35 @@ export function TradeInPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
                 <div>
                   <label className="label" htmlFor="merkInput">Merk Mobil</label>
-                  <input
+                  <ComboBox
                     id="merkInput"
-                    className="input"
-                    placeholder="Contoh: Toyota"
                     value={merk}
-                    onChange={(e) => setMerk(e.target.value)}
-                    list="brandList"
+                    onChange={onMerkChange}
+                    options={brandsList}
+                    placeholder="Pilih Merek Mobil"
                   />
-                  <datalist id="brandList">
-                    {brandsList.map((b) => <option key={b} value={b} />)}
-                  </datalist>
                 </div>
 
                 <div>
                   <label className="label" htmlFor="modelInput">Model Mobil</label>
-                  <input
+                  <ComboBox
                     id="modelInput"
-                    className="input"
-                    placeholder="Contoh: Yaris / Avanza / Alphard"
                     value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    list="modelList"
+                    onChange={onModelChange}
+                    options={modelSuggestions}
+                    placeholder="Pilih Model Mobil"
                   />
-                  <datalist id="modelList">
-                    {modelSuggestions.map((m) => <option key={m} value={m} />)}
-                  </datalist>
                 </div>
 
                 <div>
                   <label className="label" htmlFor="tipeInput">Varian / Tipe</label>
-                  <input
+                  <ComboBox
                     id="tipeInput"
-                    className="input"
-                    placeholder="Contoh: E A/T / G M/T"
                     value={tipe}
-                    onChange={(e) => setTipe(e.target.value)}
-                    list="typeList"
+                    onChange={setTipe}
+                    options={typeSuggestions}
+                    placeholder="Pilih Tipe Mobil"
                   />
-                  <datalist id="typeList">
-                    {typeSuggestions.map((t) => <option key={t} value={t} />)}
-                  </datalist>
-                </div>
-
-                <div>
-                  <label className="label" htmlFor="transInput">Transmisi</label>
-                  <select id="transInput" className="input" value={transmission} onChange={(e) => setTransmission(e.target.value)}>
-                    <option value="Matic">Matic (A/T)</option>
-                    <option value="Manual">Manual (M/T)</option>
-                  </select>
                 </div>
 
                 <div>
