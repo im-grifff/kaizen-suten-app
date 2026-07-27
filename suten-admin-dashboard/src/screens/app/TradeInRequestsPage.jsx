@@ -12,8 +12,14 @@ import {
 import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '../../utils/channel.js'
 import { formatThousands } from '../../utils/numberFormat.js'
 import { Timestamp } from 'firebase/firestore'
+import { AppraisalResultModal } from '../../components/AppraisalResultModal.jsx'
 
 const TABS = TRADEIN_TABS
+
+/** True jika request punya data hasil taksasi (Pre-Appraisal AI dari app customer). */
+function hasAppraisal(r) {
+  return Boolean(r?.rekomendasi_ai || r?.componentBreakdown || r?.categoryScores || r?.kelas_final)
+}
 const STAGE_LABELS = TRADEIN_STAGE_LABELS
 
 function deriveAdminStage(r) {
@@ -107,6 +113,7 @@ export function TradeInRequestsPage() {
   const isRoot = role === 'root'
   const isOtoxpert = role === 'otoxpert'
 
+  const [appraisalRow, setAppraisalRow] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState('')
   const [editErr, setEditErr] = useState('')
@@ -715,6 +722,28 @@ export function TradeInRequestsPage() {
 
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {hasAppraisal(r) ? (
+                            <div
+                              style={{
+                                fontSize: 11,
+                                lineHeight: 1.35,
+                                padding: '6px 8px',
+                                borderRadius: 8,
+                                background: 'rgba(56,189,248,0.10)',
+                                border: '1px solid rgba(56,189,248,0.30)',
+                              }}
+                            >
+                              <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: 2 }}>
+                                Taksasi AI{r.kelas_final ? ` · Grade ${r.kelas_final}` : ''}
+                              </div>
+                              <div>
+                                Rp {formatThousands(r.harga_min ?? '')} – Rp {formatThousands(r.harga_max ?? '')}
+                              </div>
+                              {r.midpoint ? (
+                                <div style={{ color: '#94a3b8' }}>Titik tengah: Rp {formatThousands(r.midpoint)}</div>
+                              ) : null}
+                            </div>
+                          ) : null}
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                             <input
                               className="input"
@@ -867,6 +896,11 @@ export function TradeInRequestsPage() {
                       {!isAllTab && !isOtoxpert ? (
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                          {hasAppraisal(r) ? (
+                            <button type="button" className="btn btnPrimary" onClick={() => setAppraisalRow(r)}>
+                              Hasil Taksasi
+                            </button>
+                          ) : null}
                           {tab === 'new' ? (
                             <>
                               {isRootOrSupervisor ? (
@@ -1029,6 +1063,10 @@ export function TradeInRequestsPage() {
           </table>
         </div>
       </div>
+
+      {appraisalRow ? (
+        <AppraisalResultModal result={appraisalRow} onClose={() => setAppraisalRow(null)} />
+      ) : null}
 
       {isRoot && editOpen ? (
         <div

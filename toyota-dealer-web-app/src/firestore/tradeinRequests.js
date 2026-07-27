@@ -41,11 +41,22 @@ export function listenTradeinRequestsForWa(waKey, { onData, onError }) {
     onData?.([])
     return () => {}
   }
-  const q = query(tradeinRequestsCol(), where('customerWaKey', '==', waKey), orderBy('createdAt', 'desc'))
+  // Query tanpa orderBy agar TIDAK membutuhkan composite index di Firebase Console
+  const q = query(tradeinRequestsCol(), where('customerWaKey', '==', waKey))
   return onSnapshot(
     q,
     (snap) => {
       const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      // Sort tanggal terbaru di sisi client secara instan
+      rows.sort((a, b) => {
+        const getMs = (val) => {
+          if (!val) return 0
+          if (val.toDate) return val.toDate().getTime()
+          if (typeof val === 'number') return val
+          return new Date(val).getTime() || 0
+        }
+        return getMs(b.createdAt) - getMs(a.createdAt)
+      })
       onData?.(rows)
     },
     (err) => onError?.(err),
@@ -65,9 +76,10 @@ export async function createTradeinRequest(payload) {
   const newReqRef = doc(tradeinRequestsCol())
   const indexRef = doc(db, 'tradein_plate_index', plateKey)
 
+  // Transaksi menjaga 1 plat = 1 request (anti-duplikat / anti-spam submit).
   await runTransaction(db, async (tx) => {
-    const indexSnap = await tx.get(indexRef)
-    if (indexSnap.exists()) {
+    const idxSnap = await tx.get(indexRef)
+    if (idxSnap.exists()) {
       throw new DuplicatePlateError(payload?.plateNumber || plateKey)
     }
     tx.set(newReqRef, {
@@ -76,12 +88,13 @@ export async function createTradeinRequest(payload) {
       adminStage: 'new',
       status: 'new',
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     })
     tx.set(indexRef, {
       plateKey,
       requestId: newReqRef.id,
-      customerWaKey: payload?.customerWaKey || '',
       customerUid: payload?.customerUid || '',
+      customerWaKey: payload?.customerWaKey || '',
       createdAt: serverTimestamp(),
     })
   })
