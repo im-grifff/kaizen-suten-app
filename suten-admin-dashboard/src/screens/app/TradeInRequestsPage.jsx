@@ -722,6 +722,28 @@ export function TradeInRequestsPage() {
 
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {hasAppraisal(r) ? (
+                            <div
+                              style={{
+                                fontSize: 11,
+                                lineHeight: 1.35,
+                                padding: '6px 8px',
+                                borderRadius: 8,
+                                background: 'rgba(56,189,248,0.10)',
+                                border: '1px solid rgba(56,189,248,0.30)',
+                              }}
+                            >
+                              <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: 2 }}>
+                                Taksasi AI{r.kelas_final ? ` · Grade ${r.kelas_final}` : ''}
+                              </div>
+                              <div>
+                                Rp {formatThousands(r.harga_min ?? '')} – Rp {formatThousands(r.harga_max ?? '')}
+                              </div>
+                              {r.midpoint ? (
+                                <div style={{ color: '#94a3b8' }}>Titik tengah: Rp {formatThousands(r.midpoint)}</div>
+                              ) : null}
+                            </div>
+                          ) : null}
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                             <input
                               className="input"
