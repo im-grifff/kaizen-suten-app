@@ -12,8 +12,14 @@ import {
 import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '../../utils/channel.js'
 import { formatThousands } from '../../utils/numberFormat.js'
 import { Timestamp } from 'firebase/firestore'
+import { AppraisalResultModal } from '../../components/AppraisalResultModal.jsx'
 
 const TABS = TRADEIN_TABS
+
+/** True jika request punya data hasil taksasi (Pre-Appraisal AI dari app customer). */
+function hasAppraisal(r) {
+  return Boolean(r?.rekomendasi_ai || r?.componentBreakdown || r?.categoryScores || r?.kelas_final)
+}
 const STAGE_LABELS = TRADEIN_STAGE_LABELS
 
 function deriveAdminStage(r) {
@@ -107,6 +113,7 @@ export function TradeInRequestsPage() {
   const isRoot = role === 'root'
   const isOtoxpert = role === 'otoxpert'
 
+  const [appraisalRow, setAppraisalRow] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState('')
   const [editErr, setEditErr] = useState('')
@@ -867,6 +874,11 @@ export function TradeInRequestsPage() {
                       {!isAllTab && !isOtoxpert ? (
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                          {hasAppraisal(r) ? (
+                            <button type="button" className="btn btnPrimary" onClick={() => setAppraisalRow(r)}>
+                              Hasil Taksasi
+                            </button>
+                          ) : null}
                           {tab === 'new' ? (
                             <>
                               {isRootOrSupervisor ? (
@@ -1029,6 +1041,10 @@ export function TradeInRequestsPage() {
           </table>
         </div>
       </div>
+
+      {appraisalRow ? (
+        <AppraisalResultModal result={appraisalRow} onClose={() => setAppraisalRow(null)} />
+      ) : null}
 
       {isRoot && editOpen ? (
         <div
