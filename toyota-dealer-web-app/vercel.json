@@ -1,3 +1,9 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/api/external/vehicle-history",
+      "destination": "https://cr-report-backend-production.up.railway.app/api/external/vehicle-history"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
