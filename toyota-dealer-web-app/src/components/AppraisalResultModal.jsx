@@ -118,31 +118,53 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
     let accumNet = 0;
     let accumGain = 0;
 
+    const aiRecs = Array.isArray(result.rekomendasi_perbaikan) ? result.rekomendasi_perbaikan : [];
+
     const addRepairItem = (jobType, conditionDesc, overrideGain = null) => {
       const est = getDetailedEstimateForRepair(carModelName, jobType);
-      // kenaikan = deduction of that component (not 1.5× repair cost)
       const gain = overrideGain !== null ? overrideGain : est.valuationGain;
+
+      // Find matching AI recommendation item
+      const aiMatch = aiRecs.find((r) => {
+        const k = String(r.komponen || '').toLowerCase();
+        const a = String(r.aksi || '').toLowerCase();
+        const jt = jobType.toLowerCase();
+        return k.includes(jt) || a.includes(jt) || (jt === 'battery' && (k.includes('starter') || k.includes('aki')));
+      }) || aiRecs.find(r => !r._used);
+
+      if (aiMatch) aiMatch._used = true;
+
+      const partCode = aiMatch?.kode_parts || est.partCode;
+      const partName = aiMatch?.nama_parts || est.partName;
+      const partCost = Number(aiMatch?.biaya_parts_rp) > 0 ? Number(aiMatch.biaya_parts_rp) : est.partCost;
+      const netLaborCost = Number(aiMatch?.biaya_jasa_net_rp) > 0 ? Number(aiMatch.biaya_jasa_net_rp) : est.netLaborCost;
+      const grossLaborCost = Number(aiMatch?.biaya_jasa_gross_rp) > 0 ? Number(aiMatch.biaya_jasa_gross_rp) : est.grossLaborCost;
+      const discount30 = Number(aiMatch?.diskon_jasa_rp) > 0 ? Number(aiMatch.diskon_jasa_rp) : est.discount30;
+      const totalCustomerCost = netLaborCost + partCost;
+      const alasanEdukatif = aiMatch?.alasan_edukatif || aiMatch?.catatan || '';
+
       const item = {
         icon: est.icon,
         label: `${est.jobLabel} (${conditionDesc})`,
         frtHours: est.frtHours,
         hourlyRate: est.hourlyRate,
         category: est.category,
-        grossLaborCost: est.grossLaborCost,
-        discount30: est.discount30,
-        netLaborCost: est.netLaborCost,
-        partCode: est.partCode,
-        partName: est.partName,
-        partCost: est.partCost,
-        totalCustomerCost: est.totalCustomerCost,
+        grossLaborCost,
+        discount30,
+        netLaborCost,
+        partCode,
+        partName,
+        partCost,
+        totalCustomerCost,
         gain,
+        alasanEdukatif,
       };
       list.push(item);
-      accumJasaGross += est.grossLaborCost;
-      accumJasaDiscount += est.discount30;
-      accumJasaNet += est.netLaborCost;
-      accumSparepart += est.partCost;
-      accumNet += est.totalCustomerCost;
+      accumJasaGross += grossLaborCost;
+      accumJasaDiscount += discount30;
+      accumJasaNet += netLaborCost;
+      accumSparepart += partCost;
+      accumNet += totalCustomerCost;
       accumGain += gain;
     };
 
@@ -685,7 +707,7 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                             <span>-{formatRp(item.discount30)}</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span>🔧 Sparepart Genuine: <strong>{cleanPartName(item.partName)}</strong></span>
+                            <span>🔧 Sparepart Genuine {item.partCode ? `[${item.partCode}]` : ''}: <strong>{cleanPartName(item.partName)}</strong></span>
                             <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatRp(item.partCost)}</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #cbd5e1', paddingTop: 4, marginTop: 2, fontWeight: 800, color: '#0f172a' }}>
@@ -693,6 +715,15 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                             <span style={{ color: '#1e40af', fontSize: 12 }}>{formatRp(item.totalCustomerCost)}</span>
                           </div>
                         </div>
+
+                        {item.alasanEdukatif && (
+                          <div style={{ background: '#f0f9ff', borderLeft: '3px solid #0284c7', padding: '8px 10px', borderRadius: '0 8px 8px 0', marginTop: 8, fontSize: 11, color: '#0369a1', lineHeight: 1.45 }}>
+                            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                              <span>💡</span> Alasan Teknis & Analisis AI:
+                            </div>
+                            <div>{item.alasanEdukatif}</div>
+                          </div>
+                        )}
                       </div>
                     ))}
 

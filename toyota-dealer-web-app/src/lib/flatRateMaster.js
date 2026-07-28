@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../firebase/firebase.js';
 import { getLaborRateForModel } from './workshopLaborRates.js';
+import { fetchSparepartCandidatesForJob } from './sparepartMaster.js';
 
 /**
  * Pre-indexed Hasjrat Toyota Genuine Parts catalog mapping for maintenance jobs,
@@ -200,3 +201,50 @@ export async function lookupFlatRateJob(modelName, jobKeyword) {
     };
   }
 }
+
+/**
+ * Fetch dynamic FRT Labor & Sparepart Candidates from Firestore collections concurrently.
+ * @param {string} modelName
+ * @param {Record<string, boolean>} jobTypesMap - e.g. { body: true, battery: true }
+ */
+export async function getDynamicRepairEstimatesAsync(modelName, jobTypesMap = {}) {
+  const estimates = {};
+
+  for (const [jobType, isNeeded] of Object.entries(jobTypesMap)) {
+    if (!isNeeded) continue;
+
+    const baseEst = getDetailedEstimateForRepair(modelName, jobType);
+
+    try {
+      const [candidates, flatRateDoc] = await Promise.all([
+        fetchSparepartCandidatesForJob(jobType, modelName),
+        lookupFlatRateJob(modelName, jobType),
+      ]);
+
+      if (flatRateDoc && flatRateDoc.flatrate) {
+        baseEst.frtHours = flatRateDoc.flatrate || baseEst.frtHours;
+        baseEst.hourlyRate = flatRateDoc.hourly_rate || baseEst.hourlyRate;
+        baseEst.grossLaborCost = Math.round(baseEst.hourlyRate * baseEst.frtHours);
+        baseEst.discount30 = Math.round(baseEst.grossLaborCost * 0.30);
+        baseEst.netLaborCost = baseEst.grossLaborCost - baseEst.discount30;
+      }
+
+      baseEst.sparepartCandidates = candidates || [];
+      if (candidates && candidates.length > 0) {
+        // Default part initialized to first candidate before AI refinement
+        baseEst.partCode = candidates[0].kode_parts;
+        baseEst.partName = candidates[0].nama_parts;
+        baseEst.partCost = candidates[0].harga_satuan;
+        baseEst.totalCustomerCost = baseEst.netLaborCost + baseEst.partCost;
+        baseEst.valuationGain = Math.round(baseEst.totalCustomerCost * 1.5);
+      }
+    } catch (err) {
+      console.warn(`Dynamic lookup failed for ${jobType}, using standard catalog:`, err);
+    }
+
+    estimates[jobType] = baseEst;
+  }
+
+  return estimates;
+}
+

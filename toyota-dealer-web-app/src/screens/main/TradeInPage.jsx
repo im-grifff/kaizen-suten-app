@@ -5,7 +5,7 @@ import { buildAppraisalFromConditions } from '../../lib/calculation.js';
 import { generateRecommendation, analyzeEngineSound } from '../../lib/ai.js';
 import { fetchVehicleServiceHistory } from '../../lib/vehicleServiceHistory.js';
 import { DOKUMEN_LIST, formatRp } from '../../lib/appraisalUtils.js';
-import { getDetailedEstimateForRepair } from '../../lib/flatRateMaster.js';
+import { getDetailedEstimateForRepair, getDynamicRepairEstimatesAsync } from '../../lib/flatRateMaster.js';
 import { brandOptions, modelOptions, typeOptions } from '../../data/carCatalog.js';
 import { lookupBasePrice } from '../../lib/vehicleMasterLookup.js';
 import { AppraisalResultModal } from '../../components/AppraisalResultModal.jsx';
@@ -379,33 +379,20 @@ export function TradeInPage() {
       mathResult.base_price = basePrice;
       mathResult.kodeDemand = kodeDemand;
 
-      // ── STEP 6: Pre-kalkulasi biaya perbaikan dari flatRateMaster ─────────
-      // Hanya komponen yang bermasalah — jasa sudah termasuk diskon 30% trade-in
-      const repairEstimates = {};
-      if (bodyCondition !== 'full original' && bodyCondition !== 'baret minor') {
-        repairEstimates.body = getDetailedEstimateForRepair(model || merk, 'body');
-      }
-      if (interiorCondition !== 'original') {
-        repairEstimates.interior = getDetailedEstimateForRepair(model || merk, 'interior');
-      }
-      if (mesinCondition !== 'normal' || soundAnalysis?.classification === 'kasar') {
-        repairEstimates.tuneup = getDetailedEstimateForRepair(model || merk, 'tuneup');
-      }
-      if (acCondition !== 'normal') {
-        repairEstimates.ac = getDetailedEstimateForRepair(model || merk, 'ac');
-      }
-      if (starterCondition !== 'halus') {
-        repairEstimates.battery = getDetailedEstimateForRepair(model || merk, 'battery');
-      }
-      if (transmisiCondition !== 'halus' && transmisiCondition !== 'normal') {
-        repairEstimates.transmisi = getDetailedEstimateForRepair(model || merk, 'transmisi');
-      }
-      if (suspensiCondition !== 'empuk' && suspensiCondition !== 'normal') {
-        repairEstimates.suspensi = getDetailedEstimateForRepair(model || merk, 'suspensi');
-      }
-      if (banCondition !== 'tebal' && banCondition !== 'normal') {
-        repairEstimates.tire = getDetailedEstimateForRepair(model || merk, 'tire');
-      }
+      // ── STEP 6: Dynamic Lookup & Pre-kalkulasi biaya perbaikan dari Firestore ─────────
+      // Hanya komponen yang bermasalah — jasa & part di-lookup async dari Firestore
+      const jobTypesNeededMap = {
+        body: bodyCondition !== 'full original' && bodyCondition !== 'baret minor',
+        interior: interiorCondition !== 'original',
+        tuneup: mesinCondition !== 'normal' || soundAnalysis?.classification === 'kasar',
+        ac: acCondition !== 'normal',
+        battery: starterCondition !== 'halus',
+        transmisi: transmisiCondition !== 'halus' && transmisiCondition !== 'normal',
+        suspensi: suspensiCondition !== 'empuk' && suspensiCondition !== 'normal',
+        tire: banCondition !== 'tebal' && banCondition !== 'normal',
+      };
+
+      const repairEstimates = await getDynamicRepairEstimatesAsync(model || merk, jobTypesNeededMap);
 
       // ── STEP 7: AI Narrator — narasi + rekomendasi + proyeksi post-rekondisi
       const aiResponse = await generateRecommendation({

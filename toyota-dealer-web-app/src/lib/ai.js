@@ -77,12 +77,14 @@ FORMAT OUTPUT JSON VALID — WAJIB DIIKUTI PERSIS:
       "biaya_jasa_gross_rp": 0,
       "diskon_jasa_rp": 0,
       "biaya_jasa_net_rp": 0,
+      "kode_parts": "Kode part resmi terpilih dari kandidat Firestore (contoh: 28800-YZZZ2)",
+      "nama_parts": "Nama part resmi terpilih dari kandidat Firestore",
       "biaya_parts_rp": 0,
       "total_biaya_customer_rp": 0,
       "kenaikan_nilai_taksasi_rp": 0,
       "grade_komponen_sesudah": "A",
-      "biaya_sumber": "flatRateMaster atau estimasi_AI",
-      "catatan": "1 kalimat penjelasan manfaat rekondisi ini"
+      "biaya_sumber": "sparepart_master atau flatrate_master atau estimasi_AI",
+      "alasan_edukatif": "Penjelasan 2-3 kalimat yang logis, mendalam, dan edukatif kenapa komponen ini HARUS diganti/diperbaiki berdasarkan kondisi kendaraan customer (merk, model, tahun) dan dampaknya terhadap keamanan, kinerja, serta kenaikan nilai jual kendaraan di Hasjrat Toyota."
     }
   ],
   "bonus_modifikasi_ai": [
@@ -218,15 +220,21 @@ function buildNarratorPrompt({
     return `  • ${c.komponen}${permStr}: kondisi "${c.kondisi}" → Grade ${c.grade} (retensi ${(c.retensi * 100).toFixed(0)}%) → ${deduksiStr}`;
   }).join('\n');
 
-  // Biaya perbaikan dari flatRateMaster (komponen yang sudah ada datanya)
+  // Biaya perbaikan dari flatRateMaster & sparepart_master Firestore
   const flatRateCovered = Object.keys(repairEstimates || {});
   const repairText = Object.entries(repairEstimates || {}).map(([jobType, est]) => {
-    return `  • [flatRateMaster] ${est.jobLabel}
+    let candidateText = '';
+    if (Array.isArray(est.sparepartCandidates) && est.sparepartCandidates.length > 0) {
+      candidateText = `\n      DAFTAR KANDIDAT SPAREPART DARI FIRESTORE (PILIH 1 YANG PALING PAS UNTUK MOBIL CUSTOMER Ini):\n` +
+        est.sparepartCandidates.map(c => `        * Kode: "${c.kode_parts}" | Nama: "${c.nama_parts}" | Harga: Rp ${fmt(c.harga_satuan)}`).join('\n');
+    } else {
+      candidateText = `\n      Part Default: Kode "${est.partCode}" | Nama: "${est.partName}" | Harga: Rp ${fmt(est.partCost)}`;
+    }
+
+    return `  • [Pekerjaan ${jobType.toUpperCase()}] ${est.jobLabel}
       Jasa Gross   : Rp ${fmt(est.grossLaborCost)} (FRT ${est.frtHours} jam × Rp ${fmt(est.hourlyRate)}/jam)
       Diskon 30%   : -Rp ${fmt(est.discount30)}
-      Jasa Net     : Rp ${fmt(est.netLaborCost)}
-      Parts Genuine: Rp ${fmt(est.partCost)} (${est.partName})
-      TOTAL CUSTOMER: Rp ${fmt(est.totalCustomerCost)}
+      Jasa Net     : Rp ${fmt(est.netLaborCost)}${candidateText}
       Kenaikan Nilai Taksasi (FIXED): Rp ${fmt(est.valuationGain)}`;
   }).join('\n\n');
 
@@ -298,7 +306,7 @@ ${componentText}
 [DETAIL DEDUKSI DOKUMEN & PAJAK]
 ${dokumenText}
 
-[DATA BIAYA PERBAIKAN FLATRATEMASTER — GUNAKAN ANGKA INI PERSIS]
+[DATA BIAYA PERBAIKAN & KANDIDAT SPAREPART FIRESTORE]
 ${repairText || '  Semua komponen dalam kondisi baik.'}
 ${missingText}
 ${historyText}
@@ -306,13 +314,15 @@ ${historyText}
 INSTRUKSI PENTING:
 1. deduksi_per_item: isi setiap komponen yang punya deduksi_rp_actual > 0. Gunakan jumlah dari BREAKDOWN di atas.
 2. rekomendasi_perbaikan: isi SEMUA komponen repairable yang bermasalah.
-   - Jika flatRateMaster tersedia → gunakan angkanya PERSIS.
-   - Jika tidak → estimasi realistis dari pengetahuan Anda, tandai biaya_sumber: 'estimasi_AI'.
-   - kenaikan_nilai_taksasi_rp = kenaikan_nilai_if_repaired dari BREAKDOWN (JANGAN UBAH).
+   - PENTING (KANDIDAT SPAREPART FIRESTORE): Dari daftar kandidat sparepart Firestore yang diberikan untuk setiap komponen, ANALISA & PILIH 1 part yang PALING COCOK untuk kendaraan ${merk} ${model} (${year}). Isikan \`kode_parts\`, \`nama_parts\`, dan \`biaya_parts_rp\` persis dari kandidat yang Anda pilih.
+   - PENTING (PENJELASAN LOGIS & EDUKATIF): Tuliskan \`alasan_edukatif\` 2-3 kalimat yang mendalam, logis, dan komunikatif bagi customer. Jelaskan mengapa perbaikan/pergantian part ini sangat perlu dilakukan berdasarkan gejala/kondisi mobil saat ini, dampaknya bagi keawetan & keselamatan, serta kenaikan nilai jual kembali di Hasjrat Toyota Tendean.
+   - \`biaya_jasa_net_rp\` = gunakan Jasa Net dari data di atas.
+   - \`total_biaya_customer_rp\` = \`biaya_jasa_net_rp\` + \`biaya_parts_rp\`.
+   - \`kenaikan_nilai_taksasi_rp\` = \`kenaikan_nilai_if_repaired\` dari BREAKDOWN (JANGAN UBAH).
 3. grade_setelah_rekondisi_penuh = "${mathResult.projected_grade_after_repair}" (JANGAN UBAH).
 4. harga_setelah_rekondisi_penuh = ${mathResult.projected_midpoint_after_repair} (JANGAN UBAH).
 5. total_kenaikan_nilai_rp = sum dari kenaikan_nilai_taksasi_rp semua komponen repairable.
-6. Narasi dalam Bahasa Indonesia yang profesional dan hangat.`;
+6. Narasi dalam Bahasa Indonesia yang profesional, edukatif, dan hangat.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -173,14 +173,18 @@ export function calculateAppraisal(input) {
   ];
   const minRepairableRet = Math.min(...repairableRetentions);
 
+  // Count defective components (retention < 0.95)
+  const defectiveCount = repairableRetentions.filter((r) => r < 0.95).length;
+
   if (!override_applied) {
-    if (minRepairableRet < 0.80) {
-      // Komponen kritis (Grade C level) → cap di Grade C
-      finalScore = Math.min(finalScore, 0.799);
+    if (minRepairableRet <= 0.80 || defectiveCount >= 3) {
+      // Banyak komponen bermasalah (≥ 3 komponen) atau ada komponen bermasalah serius (retensi ≤ 80%) → Grade C
+      const capScore = defectiveCount >= 4 ? 0.73 : defectiveCount >= 3 ? 0.77 : 0.79;
+      finalScore = Math.min(finalScore, capScore);
       override_applied = true;
-    } else if (minRepairableRet < 0.90) {
-      // Ada komponen Grade B → cap di Grade B, tidak bisa Grade A
-      finalScore = Math.min(finalScore, 0.899);
+    } else if (minRepairableRet < 0.90 || defectiveCount >= 1) {
+      // Ada 1–2 komponen minor bermasalah → Grade B
+      finalScore = Math.min(finalScore, 0.88);
       override_applied = true;
     }
   }
