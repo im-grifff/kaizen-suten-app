@@ -314,11 +314,13 @@ ${historyText}
 INSTRUKSI PENTING:
 1. deduksi_per_item: isi setiap komponen yang punya deduksi_rp_actual > 0. Gunakan jumlah dari BREAKDOWN di atas.
 2. rekomendasi_perbaikan: isi SEMUA komponen repairable yang bermasalah.
-   - PENTING (KANDIDAT SPAREPART FIRESTORE): Dari daftar kandidat sparepart Firestore yang diberikan untuk setiap komponen, ANALISA & PILIH 1 part yang PALING COCOK untuk kendaraan ${merk} ${model} (${year}). Isikan \`kode_parts\`, \`nama_parts\`, dan \`biaya_parts_rp\` persis dari kandidat yang Anda pilih.
-   - PENTING (PENJELASAN LOGIS & EDUKATIF): Tuliskan \`alasan_edukatif\` 2-3 kalimat yang mendalam, logis, dan komunikatif bagi customer. Jelaskan mengapa perbaikan/pergantian part ini sangat perlu dilakukan berdasarkan gejala/kondisi mobil saat ini, dampaknya bagi keawetan & keselamatan, serta kenaikan nilai jual kembali di Hasjrat Toyota Tendean.
-   - \`biaya_jasa_net_rp\` = gunakan Jasa Net dari data di atas.
-   - \`total_biaya_customer_rp\` = \`biaya_jasa_net_rp\` + \`biaya_parts_rp\`.
-   - \`kenaikan_nilai_taksasi_rp\` = \`kenaikan_nilai_if_repaired\` dari BREAKDOWN (JANGAN UBAH).
+   - SPESIFIKASI SKEMA FIRESTORE ('sparepart_master'): Data Firestore disimpan dengan field 'kode_parts' (string), 'nama_parts' (string), dan 'harga_satuan' (number).
+   - ATURAN UTAMA (FIRESTORE LOOKUP): Jika terdapat daftar kandidat sparepart Firestore untuk komponen tersebut, ANALISA & PILIH 1 part yang PALING COCOK untuk kendaraan ${merk} ${model} (${year}). Isikan 'kode_parts', 'nama_parts', dan 'biaya_parts_rp' persis dari kandidat Firestore terpilih, dan tandai biaya_sumber: 'sparepart_master'.
+   - ATURAN FALLBACK (AI MARKET KNOWLEDGE): Jika daftar kandidat Firestore kosong/tidak ada (part belum terdaftar di DB), gunakan PENGETAHUAN PASAR RESMI TOYOTA INDONESIA yang Anda miliki (AI Knowledge Base). Tentukan 'kode_parts' format resmi Toyota, 'nama_parts' resmi Toyota, dan 'biaya_parts_rp' harga pasar yang akurat, dengan menandai biaya_sumber: 'estimasi_AI'.
+   - PENJELASAN LOGIS & EDUKATIF: Tuliskan 'alasan_edukatif' 2-3 kalimat yang mendalam, logis, dan komunikatif bagi customer. Jelaskan mengapa perbaikan/pergantian part ini sangat perlu dilakukan berdasarkan gejala/kondisi mobil saat ini, dampaknya bagi keawetan & keselamatan, serta kenaikan nilai jual kembali di Hasjrat Toyota Tendean.
+   - 'biaya_jasa_net_rp' = gunakan Jasa Net dari data di atas.
+   - 'total_biaya_customer_rp' = 'biaya_jasa_net_rp' + 'biaya_parts_rp'.
+   - 'kenaikan_nilai_taksasi_rp' = 'kenaikan_nilai_if_repaired' dari BREAKDOWN (JANGAN UBAH).
 3. grade_setelah_rekondisi_penuh = "${mathResult.projected_grade_after_repair}" (JANGAN UBAH).
 4. harga_setelah_rekondisi_penuh = ${mathResult.projected_midpoint_after_repair} (JANGAN UBAH).
 5. total_kenaikan_nilai_rp = sum dari kenaikan_nilai_taksasi_rp semua komponen repairable.

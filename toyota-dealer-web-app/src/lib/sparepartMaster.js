@@ -5,10 +5,10 @@ import { db } from '../firebase/firebase.js';
  * Service to query Firestore collection 'sparepart_master' for official Hasjrat Toyota Genuine Parts.
  */
 
-export async function fetchSparepartCandidatesForJob(jobType, vehicleModel = '') {
+export async function fetchSparepartCandidatesForJob(jobType, vehicleModel = '', customTerms = []) {
   const keywordsMap = {
     battery: {
-      terms: ['BATTERY', 'AKI', 'ACCU', '34B19', '46B24', '55D23', '80D26', '105D31', '28800'],
+      terms: ['BATTERY', 'AKI', 'ACCU', '34B19', '46B24', '55D23', '80D26', '105D31'],
       codePrefixes: ['28800', '28800-'],
     },
     tuneup: {
@@ -41,19 +41,23 @@ export async function fetchSparepartCandidatesForJob(jobType, vehicleModel = '')
     },
   };
 
-  const config = keywordsMap[jobType] || {
+  const defaultConfig = keywordsMap[jobType] || {
     terms: [jobType.toUpperCase()],
     codePrefixes: [],
   };
+
+  const termsToSearch = Array.isArray(customTerms) && customTerms.length > 0
+    ? customTerms.map(t => String(t).toUpperCase().trim()).filter(Boolean)
+    : defaultConfig.terms;
 
   try {
     const colRef = collection(db, 'sparepart_master');
     const candidates = [];
     const seenCodes = new Set();
 
-    // 1. Try querying by codePrefixes directly in Firestore
-    for (const prefix of config.codePrefixes) {
-      if (candidates.length >= 10) break;
+    // 1. Prefix query on kode_parts
+    for (const prefix of defaultConfig.codePrefixes) {
+      if (candidates.length >= 12) break;
       const qPrefix = query(
         colRef,
         where('kode_parts', '>=', prefix),
@@ -78,10 +82,11 @@ export async function fetchSparepartCandidatesForJob(jobType, vehicleModel = '')
     }
 
     if (candidates.length > 0) {
+      console.log(`🤖 [AI Agentic Firestore Lookup] Found ${candidates.length} candidate documents in 'sparepart_master' for '${jobType}':`, candidates);
       return candidates.slice(0, 15);
     }
 
-    // 2. Fallback sweep query across Firestore
+    // 2. Fallback sweep search matching AI terms
     const qSweep = query(colRef, limit(500));
     const snapSweep = await getDocs(qSweep).catch(() => null);
     if (snapSweep && !snapSweep.empty) {
@@ -90,7 +95,7 @@ export async function fetchSparepartCandidatesForJob(jobType, vehicleModel = '')
         const nama = String(data.nama_parts || '').toUpperCase();
         const kode = String(data.kode_parts || '').toUpperCase();
 
-        const isMatch = config.terms.some(
+        const isMatch = termsToSearch.some(
           (term) => nama.includes(term) || kode.includes(term)
         );
 
@@ -106,6 +111,7 @@ export async function fetchSparepartCandidatesForJob(jobType, vehicleModel = '')
     }
 
     if (candidates.length > 0) {
+      console.log(`🤖 [AI Agentic Firestore Lookup] Found ${candidates.length} candidates by term sweep for '${jobType}':`, candidates);
       return candidates.slice(0, 15);
     }
   } catch (error) {

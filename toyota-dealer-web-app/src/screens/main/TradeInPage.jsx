@@ -295,7 +295,11 @@ export function TradeInPage() {
     try {
       const plateRaw = normalizePlate(plateNumber);
       const plateKey = plateRaw;
-      const kmNum    = Number(String(km).replace(/[^\d]/g, '')) || 0;
+      let kmNum = Number(String(km).replace(/[^\d]/g, '')) || 0;
+      // Otomatis kalikan 1.000 jika customer mengetik angka singkat (mis. "100" -> 100.000 KM)
+      if (kmNum > 0 && kmNum <= 500) {
+        kmNum = kmNum * 1000;
+      }
       const vehicleYear = parseInt(String(year).trim()) || new Date().getFullYear() - 5;
 
       // Anti-spam: cegah taksasi ganda untuk plat yang sama (sebelum panggilan AI yang mahal).
@@ -910,11 +914,12 @@ export function TradeInPage() {
 
               <label className="label" htmlFor="km">
                 Kilometer (Odometer) Saat Ini <span style={{ color: '#ef4444' }}>*</span>
+                <span className="muted small" style={{ marginLeft: 6 }}>(misal: 100.000 atau ketik 100)</span>
               </label>
               <input
                 id="km"
                 className="input"
-                placeholder="45.000"
+                placeholder="100.000"
                 inputMode="numeric"
                 value={km}
                 onChange={(e) => setKm(formatThousands(e.target.value))}
