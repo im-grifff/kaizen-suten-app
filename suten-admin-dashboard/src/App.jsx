@@ -9,6 +9,7 @@ import { CustomersPage } from './screens/app/CustomersPage.jsx'
 import { PricelistPage } from './screens/app/PricelistPage.jsx'
 import { TshopAdminPage } from './screens/app/TshopAdminPage.jsx'
 import { TradeInRequestsPage } from './screens/app/TradeInRequestsPage.jsx'
+import { VehicleMasterPage } from './screens/app/VehicleMasterPage.jsx'
 import { NotAuthorizedPage } from './screens/app/NotAuthorizedPage.jsx'
 
 function OverviewRoute() {
@@ -64,6 +65,14 @@ export default function App() {
             element={
               <RequireRole allow={['tradein', 'supervisor', 'otoxpert']}>
                 <TradeInRequestsPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="vehicle-master"
+            element={
+              <RequireRole allow={['supervisor', 'tradein']}>
+                <VehicleMasterPage />
               </RequireRole>
             }
           />

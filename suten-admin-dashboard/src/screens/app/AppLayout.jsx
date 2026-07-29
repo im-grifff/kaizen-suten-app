@@ -69,6 +69,7 @@ export function AppLayout() {
   const showPricelist = isRoot || role === 'supervisor'
   const showTshop = isRoot || role === 'aftersales'
   const showTradein = isRoot || isOtoxpert || role === 'tradein' || role === 'supervisor'
+  const showVehicleMaster = isRoot || role === 'supervisor' || role === 'tradein'
 
   return (
     <div style={{ minHeight: '100svh', display: 'grid', gridTemplateColumns: '260px 1fr' }}>
@@ -106,6 +107,7 @@ export function AppLayout() {
           {showPricelist ? <NavItem to="/app/pricelist" label="Pricelist" /> : null}
           {showTshop ? <NavItem to="/app/tshop" label="Tshop" /> : null}
           {showTradein ? <NavItem to="/app/tradein-requests" label="Trade In Requests" /> : null}
+          {showVehicleMaster ? <NavItem to="/app/vehicle-master" label="Vehicle Master" /> : null}
         </nav>
 
         <div style={{ marginTop: 'auto', paddingTop: 16 }}>

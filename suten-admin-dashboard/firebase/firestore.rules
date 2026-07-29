@@ -164,6 +164,13 @@ service cloud.firestore {
       allow write: if isRoot();
     }
 
+    // Master kendaraan (harga dasar dll). Baca: semua yg login (termasuk app pelanggan
+    // untuk lookup appraisal). Tulis: hanya Root & Otozentrum (tradein).
+    match /vehicle_master/{id} {
+      allow read: if signedIn();
+      allow write: if isRoot() || roleIs('tradein');
+    }
+
     match /plate_index/{plate} {
       allow read: if signedIn() && isCustomerApp();
       allow read: if isRoot() || roleIn(['supervisor', 'aftersales']);
