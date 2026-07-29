@@ -8,7 +8,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "import-vehicles": "node scripts/importVehicleMaster.js"
+    "import-vehicles": "node scripts/importVehicleMaster.js",
+    "import-flatrates": "node scripts/importFlatRateMaster.js",
+    "import-spareparts": "node scripts/importSparepartMaster.js",
+    "import-all": "node scripts/importVehicleMaster.js && node scripts/importFlatRateMaster.js && node scripts/importSparepartMaster.js"
   },
   "dependencies": {
     "firebase": "^12.11.0",

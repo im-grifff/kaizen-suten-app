@@ -81,13 +81,13 @@ export function mapConditionToScore(category, value, soundClassification = null)
       return 100;
     }
     case 'ac': {
-      if (value === 'butuh service ringan')   return 80;
-      if (value === 'mati/tidak berfungsi')   return 50;
+      if (value === 'butuh service ringan')   return 94;
+      if (value === 'mati/tidak berfungsi')   return 65;
       return 100;
     }
     case 'starter': {
-      if (value === 'lambat/aki lemah')         return 80;
-      if (value === 'kasar/dinamo bermasalah')  return 65;
+      if (value === 'lambat/aki lemah')         return 96;
+      if (value === 'kasar/dinamo bermasalah')  return 80;
       return 100;
     }
     default:
@@ -99,13 +99,6 @@ export function mapConditionToScore(category, value, soundClassification = null)
 // CORE DETERMINISTIC ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Deterministic vehicle appraisal calculation.
- * Uses Weighted Product (geometric weighted mean) — NOT simple average.
- *
- * === FORMULA ===
- * score_total = Π (retensi_i ^ bobot_i)
- */
 export function calculateAppraisal(input) {
   const {
     base_price,
@@ -121,84 +114,99 @@ export function calculateAppraisal(input) {
     dokumen_kurang = [],
   } = input;
 
-  const w = (key) => {
-    const val =
-      weights[key] ??
-      weights[`${key}_weight`] ??
-      DEFAULT_WEIGHTS[key] ??
-      DEFAULT_WEIGHTS[`${key}_weight`] ??
-      0;
-    return val > 1 ? val / 100 : val;
-  };
+  // ── LAYER 1: BASE PRICE SELECTION VIA DEMAND TIER (Terpisah dari Kondisi) ──
+  let effectiveBasePrice = Number(base_price || 0);
+  let demandNote = '';
+  if (kode_demand === 'FM') {
+    // Fast Moving: Pasaran High (100% dari Base Price)
+    effectiveBasePrice = Math.round(effectiveBasePrice * 1.00);
+    demandNote = 'Fast Moving (Pasaran High)';
+  } else if (kode_demand === 'MM') {
+    // Medium Moving: Pasaran Average (100%)
+    effectiveBasePrice = Math.round(effectiveBasePrice * 1.00);
+    demandNote = 'Medium Moving (Pasaran Average)';
+  } else if (kode_demand === 'SM') {
+    // Slow Moving: Pasaran Average - 12%
+    effectiveBasePrice = Math.round(effectiveBasePrice * 0.88);
+    demandNote = 'Slow Moving (Pasaran Lower)';
+  } else if (kode_demand === 'NM') {
+    // Non-Moving / Death Stock: Pasaran Average - 20%
+    effectiveBasePrice = Math.round(effectiveBasePrice * 0.80);
+    demandNote = 'Death Stock / Non-Moving (Manual Review)';
+  }
 
-  const demandRetensi = criteria.demand_retensi ?? DEFAULT_DEMAND_RETENTION[kode_demand] ?? 1.0;
+  // ── LAYER 2: ADDITIVE WEIGHTED CONDITION SCORE (ADDITIF Σ, Bukan Perkalian Π) ──
+  // Bobot Additif 100%: Mesin (30%), Bodi (25%), Odo (15%), Interior (10%), Transmisi (10%), Suspensi (10%)
+  const wMes  = weights.mesin    || 0.30;
+  const wExt  = weights.exterior || 0.25;
+  const wOdo  = weights.odometer || 0.15;
+  const wInt  = weights.interior || 0.10;
+  const wTra  = weights.transmisi|| 0.10;
+  const wSus  = weights.suspensi || 0.10;
+
+  // Retensi komposit Mesin (menggabungkan Mesin + AC/Aki)
+  const mesCombinedRet = Math.min(criteria.mesin_retensi, criteria.kelistrikan_retensi ?? 1);
 
   const score_total =
-    Math.pow(demandRetensi,              w('demand'))    *
-    Math.pow(criteria.exterior_retensi, w('exterior'))  *
-    Math.pow(criteria.interior_retensi, w('interior'))  *
-    Math.pow(criteria.mesin_retensi,    w('mesin'))     *
-    Math.pow(criteria.transmisi_retensi,w('transmisi')) *
-    Math.pow(criteria.suspensi_retensi, w('suspensi'))  *
-    Math.pow(criteria.odometer_retensi, w('odometer'));
+    (wMes * mesCombinedRet) +
+    (wExt * criteria.exterior_retensi) +
+    (wOdo * criteria.odometer_retensi) +
+    (wInt * criteria.interior_retensi) +
+    (wTra * criteria.transmisi_retensi) +
+    (wSus * criteria.suspensi_retensi);
 
-  let finalScore = score_total;
+  // ── RULE-BASED WEAKEST-LINK GRADING (Sesuai Panduan Resmi Otozentrum 2026) ──
+  const retMes = mesCombinedRet;
+  const retExt = criteria.exterior_retensi;
+  const retInt = criteria.interior_retensi;
+  const retTra = criteria.transmisi_retensi;
+  const retSus = criteria.suspensi_retensi;
+  const retOdo = criteria.odometer_retensi;
+
+  const minCoreRet = Math.min(retMes, retExt, retInt, retOdo);
+  const minAllRet  = Math.min(minCoreRet, retTra, retSus);
+
+  let kelas_final = 'B';
   let override_applied = false;
 
-  // Override: critical flags cap at Grade C
-  if (has_critical_flag) {
-    finalScore = Math.min(finalScore, 0.79);
-    override_applied = true;
-  }
-
-  // Hard reject if both BPKB and STNK are missing → cap at Grade D
   const bpkbHilang = dokumen_kurang.includes('BPKB');
   const stnkHilang = dokumen_kurang.includes('STNK');
-  if (bpkbHilang && stnkHilang) {
-    finalScore = Math.min(finalScore, 0.35);
+
+  // Grade F (TIDAK AMBIL): Ex Laka Berat, Ex Banjir, Ex Kejahatan, Surat Bermasalah (BPKB+STNK Hilang), Death Stock
+  if (has_critical_flag || (bpkbHilang && stnkHilang) || kode_demand === 'NM') {
+    kelas_final = 'F'; // TIDAK AMBIL / REJECT
     override_applied = true;
   }
-
-  // Worst-component grade cap:
-  // Grade A = SEMUA komponen repairable harus retensi ≥ 0.90
-  // Grade B max = jika ada komponen retensi 0.80–0.89
-  // Grade C max = jika ada komponen retensi < 0.80
-  const toRet = (v) => { const n = typeof v === 'number' ? v : 0; return n > 1 ? n / 100 : n; };
-  const repairableRetentions = [
-    toRet(criteria.exterior_retensi),
-    toRet(criteria.interior_retensi),
-    toRet(criteria.mesin_retensi),
-    toRet(criteria.transmisi_retensi),
-    toRet(criteria.suspensi_retensi),
-  ];
-  const minRepairableRet = Math.min(...repairableRetentions);
-
-  if (!override_applied) {
-    if (minRepairableRet < 0.80) {
-      // Komponen kritis (Grade C level) → cap di Grade C
-      finalScore = Math.min(finalScore, 0.799);
-      override_applied = true;
-    } else if (minRepairableRet < 0.90) {
-      // Ada komponen Grade B → cap di Grade B, tidak bisa Grade A
-      finalScore = Math.min(finalScore, 0.899);
-      override_applied = true;
-    }
+  // Grade D: Ex Laka Sedang, Pemakaian Tidak Wajar, KM > 40rb/thn (retensi <= 60%)
+  else if (minCoreRet <= 0.60) {
+    kelas_final = 'D'; // GRADE D
+    override_applied = true;
+  }
+  // Grade C: Ex Laka Ringan atau Salah 1 (Body, Interior, Mesin, Odometer) Grade C (retensi < 90%)
+  else if (minCoreRet < 0.90) {
+    kelas_final = 'C'; // GRADE C
+    override_applied = true;
+  }
+  // Grade B: Salah 1 komponen di bawah A (retensi < 98%)
+  else if (minAllRet < 0.98) {
+    kelas_final = 'B'; // GRADE B
+  }
+  // Grade A+: Full Original + Fast Moving + SEMUA Komponen Grade A (retensi >= 98%)
+  else if (kode_demand === 'FM' && minAllRet >= 0.98) {
+    kelas_final = 'A+'; // GRADE A+
+  }
+  // Grade A: SEMUA Komponen Grade A (retensi >= 98%)
+  else if (minAllRet >= 0.98) {
+    kelas_final = 'A'; // GRADE A
   }
 
-  // Determine overall grade
-  let kelas_final = 'D';
-  if (finalScore >= 0.92)      kelas_final = 'A';
-  else if (finalScore >= 0.80) kelas_final = 'B';
-  else if (finalScore >= 0.65) kelas_final = 'C';
+  // ── LAYER 3: NET FINAL PRICE CALCULATIONS ──
+  const harga_setelah_kondisi = Math.round(effectiveBasePrice * score_total);
 
-  // Price after condition
-  const harga_setelah_kondisi = base_price * finalScore;
+  // Pajak & Dokumen
+  const pkb_per_bulan = (effectiveBasePrice * 0.018) / 12;
+  const deduksi_pajak = Math.round(bulan_telat_pajak * pkb_per_bulan);
 
-  // Tax deduction: PKB ~1.8% per tahun, monthly = /12
-  const pkb_per_bulan = (base_price * 0.018) / 12;
-  const deduksi_pajak = bulan_telat_pajak * pkb_per_bulan;
-
-  // Document deductions
   let deduksi_dokumen = 0;
   const dokumenDeduksiDetail = [];
   dokumen_kurang.forEach((doc) => {
@@ -208,7 +216,7 @@ export function calculateAppraisal(input) {
     } else if (doc === 'STNK') {
       val = 2000000;
     } else if (doc === 'KTP sesuai') {
-      val = Math.round(base_price * 0.015);
+      val = Math.round(effectiveBasePrice * 0.015);
     } else if (doc === 'Faktur') {
       val = 1000000;
     } else {
@@ -221,49 +229,43 @@ export function calculateAppraisal(input) {
   if (bulan_telat_pajak > 0) {
     dokumenDeduksiDetail.push({
       dokumen: `Pajak Telat ${bulan_telat_pajak} Bulan`,
-      jumlah: Math.round(deduksi_pajak),
+      jumlah: deduksi_pajak,
     });
   }
 
   const deduksi_total = deduksi_pajak + deduksi_dokumen;
+  let midpoint = Math.max(0, harga_setelah_kondisi - deduksi_total);
 
-  let midpoint = harga_setelah_kondisi - deduksi_total;
-  if (midpoint < 0) midpoint = 0;
-
-  // Range width based on demand class
   const rawWidth = demand_range_widths[kode_demand] ?? DEFAULT_DEMAND_WIDTHS[kode_demand] ?? 10;
   const widthPercent = typeof rawWidth === 'number' ? rawWidth : (rawWidth?.width_percent ?? 10);
   const width = widthPercent / 100;
   const harga_min = Math.max(0, Math.round(midpoint * (1 - width)));
-  const harga_max = Math.max(0, Math.round(midpoint * (1 + width)));
+
+  // Untuk unit Grade B/C/D (belum direkondisi), harga_max dibatasi maksimal harga_setelah_kondisi unit tersebut.
+  // Plafon 100% Grade A (base_price) HANYA terbuka jika unit Grade A atau pasca-rekondisi di Bengkel Resmi!
+  const maxCapBeforeRepair = (kelas_final === 'A' || kelas_final === 'A+') ? base_price : harga_setelah_kondisi;
+  const harga_max = Math.min(maxCapBeforeRepair, Math.max(0, Math.round(midpoint * (1 + width))));
 
   const flag_review_mesin =
-    mesin_avg_score >= 85 &&
-    (servis_terakhir === '>1 tahun lalu' || servis_terakhir === 'tidak rutin tercatat');
+    mesin_avg_score < 85 ||
+    servis_terakhir === '>1 tahun lalu' ||
+    servis_terakhir === 'tidak rutin tercatat';
 
   return {
-    score_total: finalScore,
+    score_total,
+    effectiveBasePrice,
+    demandNote,
     kelas_final,
-    harga_setelah_kondisi: Math.round(harga_setelah_kondisi),
-    deduksi_total: Math.round(deduksi_total),
-    deduksi_pajak: Math.round(deduksi_pajak),
-    deduksi_dokumen: Math.round(deduksi_dokumen),
+    harga_setelah_kondisi,
+    deduksi_total,
+    deduksi_pajak,
+    deduksi_dokumen,
     dokumenDeduksiDetail,
-    midpoint: Math.round(midpoint),
+    midpoint,
     harga_min,
     harga_max,
     flag_review_mesin,
     override_applied,
-    demandRetensi,
-    criteriaRetentions: {
-      exterior:  criteria.exterior_retensi,
-      interior:  criteria.interior_retensi,
-      mesin:     criteria.mesin_retensi,
-      transmisi: criteria.transmisi_retensi,
-      suspensi:  criteria.suspensi_retensi,
-      odometer:  criteria.odometer_retensi,
-      demand:    demandRetensi,
-    },
   };
 }
 
@@ -271,28 +273,6 @@ export function calculateAppraisal(input) {
 // HIGH-LEVEL FACADE — dipanggil langsung dari TradeInPage
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Konversi seluruh inputan kondisi customer (string dari dropdown UI) menjadi
- * hasil appraisal matematis lengkap — satu sumber kebenaran.
- *
- * @param {object} p
- * @param {string}   p.bodyCondition
- * @param {string}   p.banCondition
- * @param {string}   p.interiorCondition
- * @param {string}   p.mesinCondition
- * @param {string}   p.transmisiCondition
- * @param {string}   p.suspensiCondition
- * @param {string}   p.acCondition
- * @param {string}   p.starterCondition
- * @param {string|null} p.soundClassification  - hasil analisa suara AI ('halus'|'sedang'|'kasar')
- * @param {number}   p.kmTotal                 - total odometer (absolut)
- * @param {number}   p.vehicleYear             - tahun pembuatan kendaraan
- * @param {number}   p.basePrice               - harga dasar pasaran mulus (dari vehicle_master)
- * @param {string}   p.kodeDemand              - 'FM'|'MM'|'SM'|'NM'
- * @param {number}   p.bulanTelatPajak
- * @param {string[]} p.dokumenKurang
- * @returns {object} mathResult — semua angka yang dibutuhkan AI dan modal
- */
 export function buildAppraisalFromConditions({
   bodyCondition      = 'full original',
   banCondition       = 'tebal',
@@ -317,110 +297,94 @@ export function buildAppraisalFromConditions({
   // ── 1. Score per komponen ──────────────────────────────────────────────────
   let extScore = mapConditionToScore('body', bodyCondition);
   const banScore = mapConditionToScore('ban', banCondition);
-  // Ban memengaruhi cap eksterior
   if (banScore < 100) extScore = Math.min(extScore, banScore);
 
   const intScore   = mapConditionToScore('interior', interiorCondition);
   const mesScore   = mapConditionToScore('mesin', mesinCondition, soundClassification);
   const transScore = mapConditionToScore('transmisi', transmisiCondition);
   const suspScore  = mapConditionToScore('suspensi', suspensiCondition);
-  // AC & Starter berkontribusi ke komponen Mesin (sebagai sub-faktor)
   const acScore    = mapConditionToScore('ac', acCondition);
   const startScore = mapConditionToScore('starter', starterCondition);
-  // Gabungkan skor mesin dengan AC dan starter (rata-rata berbobot sederhana)
-  const mesinKompositScore = Math.round((mesScore * 0.6) + (acScore * 0.25) + (startScore * 0.15));
+  const listrikScore = Math.min(acScore, startScore);
 
   // ── 2. Konversi score ke retensi (lookup dari CRITERIA_SCORE_BRACKETS) ────
-  const extRet   = scoreToRetention(extScore,          CRITERIA_SCORE_BRACKETS.exterior);
-  const intRet   = scoreToRetention(intScore,          CRITERIA_SCORE_BRACKETS.interior);
-  const mesRet   = scoreToRetention(mesinKompositScore, CRITERIA_SCORE_BRACKETS.mesin);
-  const transRet = scoreToRetention(transScore,        CRITERIA_SCORE_BRACKETS.transmisi);
-  const suspRet  = scoreToRetention(suspScore,         CRITERIA_SCORE_BRACKETS.suspensi);
+  const extRet     = scoreToRetention(extScore,     CRITERIA_SCORE_BRACKETS.exterior);
+  const intRet     = scoreToRetention(intScore,     CRITERIA_SCORE_BRACKETS.interior);
+  const mesRet     = scoreToRetention(mesScore,     CRITERIA_SCORE_BRACKETS.mesin);
+  const listrikRet = scoreToRetention(listrikScore, CRITERIA_SCORE_BRACKETS.kelistrikan);
+  const transRet   = scoreToRetention(transScore,   CRITERIA_SCORE_BRACKETS.transmisi);
+  const suspRet    = scoreToRetention(suspScore,    CRITERIA_SCORE_BRACKETS.suspensi);
+  const odoResult  = getOdometerRetentionByYear(kmPerYear);
 
-  // ── 3. Odometer retention — berbasis km/tahun ──────────────────────────────
-  const odoResult = getOdometerRetentionByYear(kmPerYear);
+  const mesCombinedRet = Math.min(mesRet.retensi, listrikRet.retensi);
 
-  // ── 4. Flag kritis — body ex-laka sedang ke atas OR mesin bermasalah ──────
+  // ── 3. Flag kritis (HANYA Laka Berat / Ex Banjir / Kejahatan / Surat Hilang Total) ──
   const hasCriticalFlag =
-    bodyCondition === 'laka ringan'   ||
-    bodyCondition === 'laka sedang'   ||
-    mesinCondition === 'bermasalah'   ||
-    soundClassification === 'kasar';
+    bodyCondition === 'laka berat';
 
-  // ── 5. Jalankan engine deterministik ─────────────────────────────────────
+  // ── 4. Jalankan engine deterministik 3 Layer ──────────────────────────────
   const mathResult = calculateAppraisal({
     base_price:  basePrice,
     kode_demand: kodeDemand,
     criteria: {
-      exterior_retensi:  extRet.retensi,
-      interior_retensi:  intRet.retensi,
-      mesin_retensi:     mesRet.retensi,
-      transmisi_retensi: transRet.retensi,
-      suspensi_retensi:  suspRet.retensi,
-      odometer_retensi:  odoResult.retensi,
+      exterior_retensi:    extRet.retensi,
+      interior_retensi:    intRet.retensi,
+      mesin_retensi:       mesRet.retensi,
+      kelistrikan_retensi: listrikRet.retensi,
+      transmisi_retensi:   transRet.retensi,
+      suspensi_retensi:    suspRet.retensi,
+      odometer_retensi:    odoResult.retensi,
     },
     has_critical_flag: hasCriticalFlag,
     bulan_telat_pajak: bulanTelatPajak,
     dokumen_kurang:    dokumenKurang,
-    mesin_avg_score:   mesinKompositScore,
+    mesin_avg_score:   mesScore,
   });
 
-  // ── 6. Bangun detail per-komponen untuk AI & modal ────────────────────────
-  //
-  // CATATAN PENTING:
-  // deduksi_rp (lama) = basePrice × (1 - retensi) secara individual (tidak bisa dijumlah)
-  // deduksi_rp_actual (baru) = kontribusi proporsional nyata ke total deduction
-  //   → Metode: Weighted Shortfall Proportional Attribution
-  //   → Formula: shortfall_i = weight_i × max(0, 1 - retensi_i)
-  //              proportion_i = shortfall_i / sum(all shortfalls)
-  //              deduksi_rp_actual_i = proportion_i × totalActualDeduction
-  // ─────────────────────────────────────────────────────────────────────────
+  const effBase = mathResult.effectiveBasePrice;
 
-  // Weights sesuai DEFAULT_WEIGHTS
-  const W = DEFAULT_WEIGHTS;
-  const retentions = {
-    exterior:  extRet.retensi,
-    interior:  intRet.retensi,
-    mesin:     mesRet.retensi,
-    transmisi: transRet.retensi,
-    suspensi:  suspRet.retensi,
-    odometer:  odoResult.retensi,
-  };
-
-  // Weighted shortfall per komponen (nilai negatif bonus diabaikan)
-  const shortfalls = {
-    exterior:  (W.exterior  || 0.15) * Math.max(0, 1 - retentions.exterior),
-    interior:  (W.interior  || 0.15) * Math.max(0, 1 - retentions.interior),
-    mesin:     (W.mesin     || 0.20) * Math.max(0, 1 - retentions.mesin),
-    transmisi: (W.transmisi || 0.10) * Math.max(0, 1 - retentions.transmisi),
-    suspensi:  (W.suspensi  || 0.05) * Math.max(0, 1 - retentions.suspensi),
-    odometer:  (W.odometer  || 0.10) * Math.max(0, 1 - retentions.odometer), // permanent
-  };
-  const totalShortfall = Object.values(shortfalls).reduce((s, v) => s + v, 0);
-
-  // Total deduction aktual (rugi nyata dari base_price ke midpoint yang sudah dihitung)
-  const totalActualDeduction = Math.max(0, basePrice - mathResult.midpoint);
-
-  /**
-   * Hitung deduksi_rp_actual proporsional untuk setiap komponen.
-   * @param {string} key - key nama komponen
-   */
+  // Proportional Deductions Additif langsung: BasePrice * Bobot * (1 - Retensi)
   const proportionalDeduksi = (key) => {
-    if (totalShortfall === 0) return 0;
-    return Math.round((shortfalls[key] / totalShortfall) * totalActualDeduction);
+    switch (key) {
+      case 'mesin':
+        return Math.round(effBase * 0.30 * (1 - mesCombinedRet));
+      case 'exterior':
+        return Math.round(effBase * 0.25 * (1 - extRet.retensi));
+      case 'odometer':
+        return odoResult.retensi >= 1.0 ? 0 : Math.round(effBase * 0.15 * (1 - odoResult.retensi));
+      case 'interior':
+        return Math.round(effBase * 0.10 * (1 - intRet.retensi));
+      case 'transmisi':
+        return Math.round(effBase * 0.10 * (1 - transRet.retensi));
+      case 'suspensi':
+        return Math.round(effBase * 0.10 * (1 - suspRet.retensi));
+      default:
+        return 0;
+    }
   };
 
-  // ── Proyeksi skor & harga setelah SEMUA komponen repairable diperbaiki ─────
-  // Komponen repairable (Body, Interior, Mesin, Transmisi, Suspensi) diperbaiki ke Grade A (100%)
-  // Odometer = permanent (deduksi KM tetap ada jika ada).
-  // Total pengembalian nilai = sum dari deduksi_rp_actual semua komponen repairable
   const repairableKeys = ['exterior', 'interior', 'mesin', 'transmisi', 'suspensi'];
   const totalRepairableGain = repairableKeys.reduce((sum, k) => sum + proportionalDeduksi(k), 0);
 
   const projectedMidpoint = mathResult.midpoint + totalRepairableGain;
-  const projectedGrade = 'A'; // Rekondisi penuh di bengkel resmi menjamin unit naik ke Grade A Certified
+  const projectedGrade = mathResult.kelas_final === 'D' || mathResult.kelas_final === 'C' ? 'B' : 'A';
 
   const componentBreakdown = [
+    {
+      komponen:      'Mesin & Kelistrikan',
+      kondisi:       [
+        mesinCondition !== 'normal' ? `mesin: ${mesinCondition}` : '',
+        acCondition !== 'normal' ? `ac: ${acCondition}` : '',
+        starterCondition !== 'halus' ? `starter/aki: ${starterCondition}` : '',
+      ].filter(Boolean).join(', ') || 'normal',
+      skor:          mesScore,
+      grade:         mesRet.label,
+      retensi:       mesCombinedRet,
+      deduksi_rp:    proportionalDeduksi('mesin'),
+      deduksi_rp_actual: proportionalDeduksi('mesin'),
+      is_permanent:  false,
+      kenaikan_nilai_if_repaired: proportionalDeduksi('mesin'),
+    },
     {
       komponen:      'Eksterior / Body',
       kondisi:       bodyCondition,
@@ -428,7 +392,7 @@ export function buildAppraisalFromConditions({
       skor:          extScore,
       grade:         extRet.label,
       retensi:       extRet.retensi,
-      deduksi_rp:    Math.round(basePrice * (1 - extRet.retensi)),  // legacy
+      deduksi_rp:    proportionalDeduksi('exterior'),
       deduksi_rp_actual: proportionalDeduksi('exterior'),
       is_permanent:  false,
       kenaikan_nilai_if_repaired: proportionalDeduksi('exterior'),
@@ -439,24 +403,10 @@ export function buildAppraisalFromConditions({
       skor:          intScore,
       grade:         intRet.label,
       retensi:       intRet.retensi,
-      deduksi_rp:    Math.round(basePrice * (1 - intRet.retensi)),
+      deduksi_rp:    proportionalDeduksi('interior'),
       deduksi_rp_actual: proportionalDeduksi('interior'),
       is_permanent:  false,
       kenaikan_nilai_if_repaired: proportionalDeduksi('interior'),
-    },
-    {
-      komponen:      'Mesin, AC & Kelistrikan',
-      kondisi:       mesinCondition,
-      kondisi_ac:    acCondition,
-      kondisi_starter: starterCondition,
-      sound:         soundClassification,
-      skor:          mesinKompositScore,
-      grade:         mesRet.label,
-      retensi:       mesRet.retensi,
-      deduksi_rp:    Math.round(basePrice * (1 - mesRet.retensi)),
-      deduksi_rp_actual: proportionalDeduksi('mesin'),
-      is_permanent:  false,
-      kenaikan_nilai_if_repaired: proportionalDeduksi('mesin'),
     },
     {
       komponen:      'Transmisi',
@@ -464,7 +414,7 @@ export function buildAppraisalFromConditions({
       skor:          transScore,
       grade:         transRet.label,
       retensi:       transRet.retensi,
-      deduksi_rp:    Math.round(basePrice * (1 - transRet.retensi)),
+      deduksi_rp:    proportionalDeduksi('transmisi'),
       deduksi_rp_actual: proportionalDeduksi('transmisi'),
       is_permanent:  false,
       kenaikan_nilai_if_repaired: proportionalDeduksi('transmisi'),
@@ -475,7 +425,7 @@ export function buildAppraisalFromConditions({
       skor:          suspScore,
       grade:         suspRet.label,
       retensi:       suspRet.retensi,
-      deduksi_rp:    Math.round(basePrice * (1 - suspRet.retensi)),
+      deduksi_rp:    proportionalDeduksi('suspensi'),
       deduksi_rp_actual: proportionalDeduksi('suspensi'),
       is_permanent:  false,
       kenaikan_nilai_if_repaired: proportionalDeduksi('suspensi'),
@@ -490,10 +440,10 @@ export function buildAppraisalFromConditions({
       km_per_year:   kmPerYear,
       vehicle_age:   vehicleAge,
       is_bonus:      odoResult.retensi > 1.0,
-      is_permanent:  true,  // ← Odometer TIDAK BISA diperbaiki
-      deduksi_rp:    odoResult.retensi >= 1.0 ? 0 : Math.round(basePrice * (1 - odoResult.retensi)),
-      deduksi_rp_actual: proportionalDeduksi('odometer'),  // 0 jika bonus
-      kenaikan_nilai_if_repaired: 0,  // ← Odometer tidak bisa naik
+      is_permanent:  true,
+      deduksi_rp:    odoResult.retensi >= 1.0 ? 0 : proportionalDeduksi('odometer'),
+      deduksi_rp_actual: proportionalDeduksi('odometer'),
+      kenaikan_nilai_if_repaired: 0,
     },
   ];
 
@@ -512,19 +462,21 @@ export function buildAppraisalFromConditions({
     projected_midpoint_after_repair: projectedMidpoint,
     // Raw scores (dipakai di modal AppraisalResultModal)
     categoryScores: {
-      exterior:  extScore,
-      interior:  intScore,
-      mesin:     mesinKompositScore,
-      transmisi: transScore,
-      suspensi:  suspScore,
+      exterior:    extScore,
+      interior:    intScore,
+      mesin:       mesScore,
+      kelistrikan: listrikScore,
+      transmisi:   transScore,
+      suspensi:    suspScore,
     },
     categoryRetentions: {
-      exterior:  extRet.retensi,
-      interior:  intRet.retensi,
-      mesin:     mesRet.retensi,
-      transmisi: transRet.retensi,
-      suspensi:  suspRet.retensi,
-      odometer:  odoResult.retensi,
+      exterior:    extRet.retensi,
+      interior:    intRet.retensi,
+      mesin:       mesRet.retensi,
+      kelistrikan: listrikRet.retensi,
+      transmisi:   transRet.retensi,
+      suspensi:    suspRet.retensi,
+      odometer:    odoResult.retensi,
     },
   };
 }

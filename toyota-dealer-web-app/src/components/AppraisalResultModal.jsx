@@ -118,31 +118,55 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
     let accumNet = 0;
     let accumGain = 0;
 
+    const aiRecs = Array.isArray(result.rekomendasi_perbaikan) ? result.rekomendasi_perbaikan : [];
+
     const addRepairItem = (jobType, conditionDesc, overrideGain = null) => {
       const est = getDetailedEstimateForRepair(carModelName, jobType);
-      // kenaikan = deduction of that component (not 1.5× repair cost)
       const gain = overrideGain !== null ? overrideGain : est.valuationGain;
+
+      // Find matching AI recommendation item
+      const aiMatch = aiRecs.find((r) => {
+        const k = String(r.komponen || '').toLowerCase();
+        const a = String(r.aksi || '').toLowerCase();
+        const jt = jobType.toLowerCase();
+        return k.includes(jt) || a.includes(jt) || (jt === 'battery' && (k.includes('starter') || k.includes('aki')));
+      }) || aiRecs.find(r => !r._used);
+
+      if (aiMatch) aiMatch._used = true;
+
+      const partCode = aiMatch?.kode_parts || est.partCode;
+      const partName = aiMatch?.nama_parts || est.partName;
+      const partCost = Number(aiMatch?.biaya_parts_rp) > 0 ? Number(aiMatch.biaya_parts_rp) : est.partCost;
+      const netLaborCost = Number(aiMatch?.biaya_jasa_net_rp) > 0 ? Number(aiMatch.biaya_jasa_net_rp) : est.netLaborCost;
+      const grossLaborCost = Number(aiMatch?.biaya_jasa_gross_rp) > 0 ? Number(aiMatch.biaya_jasa_gross_rp) : est.grossLaborCost;
+      const discount30 = Number(aiMatch?.diskon_jasa_rp) > 0 ? Number(aiMatch.diskon_jasa_rp) : est.discount30;
+      const totalCustomerCost = netLaborCost + partCost;
+      const alasanEdukatif = aiMatch?.alasan_edukatif || aiMatch?.catatan || '';
+
       const item = {
         icon: est.icon,
         label: `${est.jobLabel} (${conditionDesc})`,
         frtHours: est.frtHours,
         hourlyRate: est.hourlyRate,
         category: est.category,
-        grossLaborCost: est.grossLaborCost,
-        discount30: est.discount30,
-        netLaborCost: est.netLaborCost,
-        partCode: est.partCode,
-        partName: est.partName,
-        partCost: est.partCost,
-        totalCustomerCost: est.totalCustomerCost,
+        grossLaborCost,
+        discount30,
+        netLaborCost,
+        jobType,
+        partCode,
+        partName,
+        partCost,
+        totalCustomerCost,
         gain,
+        alasanEdukatif,
+        biayaSumber: aiMatch?.biaya_sumber || 'sparepart_master',
       };
       list.push(item);
-      accumJasaGross += est.grossLaborCost;
-      accumJasaDiscount += est.discount30;
-      accumJasaNet += est.netLaborCost;
-      accumSparepart += est.partCost;
-      accumNet += est.totalCustomerCost;
+      accumJasaGross += grossLaborCost;
+      accumJasaDiscount += discount30;
+      accumJasaNet += netLaborCost;
+      accumSparepart += partCost;
+      accumNet += totalCustomerCost;
       accumGain += gain;
     };
 
@@ -161,14 +185,16 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
     if (interior === 'kurang rapi' || interior === 'tidak layak') {
       addRepairItem('interior', interior, getKenaikan('interior'));
     }
-    if (mesin === 'ada gejala' || mesin === 'bermasalah' || (analisaSuaraMesin && analisaSuaraMesin.classification === 'kasar')) {
-      addRepairItem('tuneup', mesin || 'suara kasar', getKenaikan('mesin'));
+    const mesinHasGain = mesin === 'ada gejala' || mesin === 'bermasalah' || (analisaSuaraMesin && analisaSuaraMesin.classification === 'kasar');
+    if (mesinHasGain) {
+      addRepairItem('tuneup', mesin || 'suara kasar', getKenaikan('mesin utama'));
     }
     if (ac === 'butuh service ringan' || ac === 'mati/tidak berfungsi') {
-      addRepairItem('ac', ac, 0); // AC is sub-component of Mesin, kenaikan sudah terhitung di mesin
+      addRepairItem('ac', ac, getKenaikan('kelistrikan'));
     }
     if (starter === 'lambat/aki lemah' || starter === 'kasar/dinamo bermasalah') {
-      addRepairItem('battery', starter, 0); // Battery is sub-component of Mesin
+      const acHasGain = ac === 'butuh service ringan' || ac === 'mati/tidak berfungsi';
+      addRepairItem('battery', starter, acHasGain ? 0 : getKenaikan('kelistrikan'));
     }
     if (transmisi && transmisi !== 'halus' && transmisi !== 'normal') {
       addRepairItem('transmisi', transmisi, getKenaikan('transmisi'));
@@ -212,9 +238,10 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
     const calcMidpoint = result.projected_midpoint_after_repair || (midpoint + totalGain);
 
     // Pakai demand_width yang sama dengan penawaran utama (implied dari harga_min/harga_max)
-    const impliedWidth = midpoint > 0 ? (harga_max - harga_min) / (2 * midpoint) : 0.10;
+    const baseWidth = midpoint > 0 ? (harga_max - harga_min) / (2 * midpoint) : 0.10;
+    const impliedWidth = Math.max(baseWidth, 0.10);
     const min = Math.round(calcMidpoint * (1 - impliedWidth));
-    const max = Math.round(calcMidpoint * (1 + impliedWidth));
+    const max = Math.min(base_price, Math.round(calcMidpoint * (1 + impliedWidth)));
 
     return {
       upgradedGrade: projectedGrade,
@@ -441,13 +468,35 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid #cbd5e1' }}>
-                      <td style={{ padding: '5px 0', color: '#0f172a', fontWeight: 800 }}>Harga Pasaran Mobil Mulus (Kondisi A)</td>
-                      <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>{formatRp(base_price)}</td>
+                      <td style={{ padding: '5px 0', color: '#0f172a', fontWeight: 800 }}>
+                        Harga Pasaran Mobil Mulus (Kondisi A)
+                        {result.demandNote && (
+                          <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: 4 }}>
+                            {result.demandNote}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>
+                        {formatRp(result.effectiveBasePrice || base_price)}
+                      </td>
                     </tr>
 
                     {/* Component-based Proportional Deductions */}
                     {Array.isArray(result.componentBreakdown) && result.componentBreakdown.length > 0 ? (
                       result.componentBreakdown.map((item, idx) => {
+                        if (item.is_bonus && item.retensi > 1.0) {
+                          const bonusRp = Math.round(base_price * (item.retensi - 1.0));
+                          return (
+                            <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                              <td style={{ padding: '4px 0', color: '#047857', fontWeight: 700 }}>
+                                ✨ Bonus Kilometer Irit ({item.kondisi})
+                              </td>
+                              <td style={{ padding: '4px 0', textAlign: 'right', color: '#047857', fontWeight: 700 }}>
+                                +{formatRp(bonusRp)}
+                              </td>
+                            </tr>
+                          );
+                        }
                         const ded = item.deduksi_rp_actual ?? item.deduksi_rp ?? 0;
                         if (ded <= 0) return null;
                         return (
@@ -455,8 +504,8 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                             <td style={{ padding: '4px 0', color: '#475569' }}>
                               Potongan {item.komponen} ({item.kondisi})
                               {item.is_permanent && (
-                                <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: '#6b21a8', background: '#f3e8ff', padding: '1px 5px', borderRadius: 4 }}>
-                                  [PERMANENT - ODOMETER]
+                                <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: '#6b21a8', background: '#f3e8ff', padding: '1px 6px', borderRadius: 4 }}>
+                                  [FAKTOR PERMANEN]
                                 </span>
                               )}
                             </td>
@@ -684,13 +733,37 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                             <span>🎁 Diskon 30% Jasa Trade-In:</span>
                             <span>-{formatRp(item.discount30)}</span>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span>🔧 Sparepart Genuine: <strong>{cleanPartName(item.partName)}</strong></span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                              🔧 Sparepart Genuine: <strong>{cleanPartName(item.partName)}</strong>
+                            </span>
                             <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatRp(item.partCost)}</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #cbd5e1', paddingTop: 4, marginTop: 2, fontWeight: 800, color: '#0f172a' }}>
                             <span>Total Biaya Servis Pekerjaan Ini:</span>
                             <span style={{ color: '#1e40af', fontSize: 12 }}>{formatRp(item.totalCustomerCost)}</span>
+                          </div>
+                        </div>
+
+                        <div style={{ background: '#f0f9ff', borderLeft: '3px solid #0284c7', padding: '8px 10px', borderRadius: '0 8px 8px 0', marginTop: 8, fontSize: 11, color: '#0369a1', lineHeight: 1.45 }}>
+                          <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                            <span>💡</span> Analisis &amp; Manfaat Teknis (by AI):
+                          </div>
+                          <div>
+                            {item.alasanEdukatif && item.alasanEdukatif.trim().length > 10
+                              ? item.alasanEdukatif
+                              : (function(jt) {
+                                  const s = String(jt || '').toLowerCase();
+                                  if (s.includes('body')) return 'Poles & touch-up bodi menghilangkan baret minor, melindungi permukaan cat asli pabrikan dari karat/oksidasi, serta menjaga estetika kilau tampilan fisik kendaraan.';
+                                  if (s.includes('tire') || s.includes('ban')) return 'Penggantian ban aus dengan Genuine Tire menjamin daya cengkeram (grip) pengereman tetap optimal di kondisi basah/kering, menjaga kenyamanan, dan mencegah risiko ban meledak.';
+                                  if (s.includes('interior')) return 'Treatment & cabin disinfectant membersihkan kotoran, menghilangkan bakteri & bau tak sedap di kabin, sehingga kualitas udara & kenyamanan ruang kemudi kembali seperti baru.';
+                                  if (s.includes('battery') || s.includes('aki')) return 'Penggantian Aki Genuine memastikan tegangan sistem starter & kelistrikan mobil selalu stabil (sekali starter nyala) serta mencegah kelistrikan mogok di jalan.';
+                                  if (s.includes('tuneup') || s.includes('mesin')) return 'Servis tune-up & pembersihan ruang bakar memulihkan efisiensi bahan bakar, menghilangkan getaran mesin, dan memastikan performa mesin tetap responsif & bertenaga.';
+                                  if (s.includes('ac')) return 'Pembersihan sistem AC mengembalikan hembusan udara dingin yang sejuk, menyaring alergen/debu kabin, dan memperpanjang umur kerja kompresor AC.';
+                                  if (s.includes('transmisi')) return 'Servis cairan & filter transmisi menjamin perpindahan gigi tetap halus, presisi, serta mencegah keausan komponen kopling/kampas transmisi.';
+                                  if (s.includes('suspensi')) return 'Penggantian komponen kaki-kaki menghilangkan bunyi gluduk saat melewati jalan berlubang, memulihkan kenyamanan banting suspensi, dan menjaga keawetan ban.';
+                                  return 'Penggantian dengan Genuine Parts resmi mengembalikan performa kendaraan ke standar pabrikan dan meningkatkan nilai jual kembali secara maksimal.';
+                                })(item.jobType || item.category)}
                           </div>
                         </div>
                       </div>
@@ -707,7 +780,7 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                         <span>-{formatRp(totalJasaDiscount)}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4, color: '#475569' }}>
-                        <span>Total Spareparts Original Toyota:</span>
+                        <span>Total Spareparts Genuine / Original:</span>
                         <strong style={{ color: '#0f172a' }}>{formatRp(totalSparepart)}</strong>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderTop: '2px solid #0f172a', paddingTop: 6, marginTop: 4 }}>
@@ -746,20 +819,32 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
 
                     <div style={{ borderTop: '2px solid #059669', paddingTop: 8, marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: '#065f46', textTransform: 'uppercase' }}>PENAWARAN BARU (GRADE A CERTIFIED)</div>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: '#065f46', textTransform: 'uppercase' }}>ESTIMASI PENAWARAN BARU PASCA REKONDISI BENGKEL RESMI</div>
                         <div style={{ fontSize: 15, fontWeight: 900, color: '#047857', marginTop: 2 }}>
                           {formatRp(repairedOfferMin)} – {formatRp(repairedOfferMax)}
                         </div>
                       </div>
-                      <div style={{ background: '#059669', color: '#ffffff', fontWeight: 900, fontSize: 11, padding: '4px 10px', borderRadius: 8 }}>
-                        GRADE A
+                      <div style={{ background: '#059669', color: '#ffffff', fontWeight: 800, fontSize: 10.5, padding: '4px 10px', borderRadius: 8 }}>
+                        HASJRAT CERTIFIED
                       </div>
                     </div>
+
                     {totalUpgradedGain > totalNetCost && (
                       <div style={{ fontSize: 10.5, color: '#047857', marginTop: 8, background: '#dcfce7', padding: '6px 8px', borderRadius: 6, fontWeight: 700, textAlign: 'center' }}>
                         💡 Keuntungan Bersih Nilai Taksasi: +{formatRp(totalUpgradedGain - totalNetCost)} lebih tinggi dibanding biaya servis!
                       </div>
                     )}
+
+                    <div style={{ background: '#f0fdf4', borderLeft: '3px solid #059669', padding: '8px 10px', borderRadius: '0 8px 8px 0', marginTop: 8, fontSize: 11, color: '#065f46', lineHeight: 1.45 }}>
+                      <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                        <span>💡</span> Catatan Transparan &amp; Analisis Nilai (by AI):
+                      </div>
+                      <div>
+                        Pengembalian nilai taksasi di atas murni dihitung dari komponen fisik yang dapat diperbaiki di Bengkel Resmi (bodi, interior, mesin, kelistrikan &amp; kaki-kaki). Penyesuaian akibat faktor pergerakan pasar serta jarak tempuh kilometer (Odometer) bersifat permanen dan tetap dipertahankan secara transparan.
+                        <br />
+                        ✨ <strong>Kabar Baik:</strong> Nilai penawaran final bahkan <u>berpotensi bisa lebih tinggi dari estimasi ini</u> setelah dilakukan inspeksi &amp; pemeriksaan fisik langsung oleh tim teknisi Hasjrat Toyota Tendean!
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -770,7 +855,7 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                   <span>💬</span> SUMMARY &amp; PENJELASAN AI
                 </div>
                 <p style={{ fontSize: 11.5, color: '#1e3a8a', lineHeight: 1.6, margin: 0 }}>
-                  "{rekomendasi_ai?.ringkasan || `Berdasarkan evaluasi menyeluruh data kendaraan ${merk} ${model} (${tahun}), unit Anda memiliki tingkat kesehatan ${Math.round((score_total || 0.85) * 100)}% (Grade ${kelas_final}) dengan estimasi penawaran harga bersih ${formatRp(harga_min)} – ${formatRp(harga_max)} dari harga pasaran mulus ${formatRp(base_price)}.${totalGain > 0 ? ` Opsi perbaikan ringan di Bengkel Resmi Hasjrat Toyota Tendean berpotensi menaikkan nilai taksasi hingga +${formatRp(totalGain)}.` : ''} Penilaian ini merupakan estimasi perkiraan awal yang akan difinalisasi saat pemeriksaan fisik langsung oleh tim Hasjrat Toyota Tendean.`}"
+                  "{`Berdasarkan evaluasi menyeluruh data kendaraan ${merk} ${model} (${tahun}), unit Anda memiliki tingkat kesehatan ${Math.round((score_total || 0.85) * 100)}% (Grade ${kelas_final}) dengan estimasi penawaran harga bersih ${formatRp(harga_min)} – ${formatRp(harga_max)} dari harga pasaran mulus ${formatRp(base_price)}.${totalUpgradedGain > 0 ? ` Melakukan opsi perbaikan senilai ${formatRp(totalNetCost)} di Bengkel Resmi Hasjrat Toyota Tendean berpotensi menaikkan nilai taksasi hingga +${formatRp(totalUpgradedGain)}.` : ''} Penilaian ini merupakan estimasi perkiraan awal berdasarkan data isian Anda dan akan difinalisasi melalui pemeriksaan fisik langsung oleh tim teknisi Hasjrat Toyota Tendean.`}"
                 </p>
               </div>
 
