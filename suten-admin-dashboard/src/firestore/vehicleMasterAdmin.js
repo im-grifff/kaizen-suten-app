@@ -1,27 +1,49 @@
-import { collection, doc, getDocs, limit, orderBy, query, updateDoc, where } from 'firebase/firestore'
+import {
+  collection,
+  doc,
+  getCountFromServer,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  startAfter,
+  updateDoc,
+  where,
+} from 'firebase/firestore'
 import { db } from '../lib/firebase.js'
 
-// Karakter Unicode tertinggi — batas atas untuk pencocokan prefix di Firestore.
-const HIGH = ''
+// Karakter Unicode tertinggi (U+F8FF) — batas atas untuk pencocokan prefix di Firestore.
+const HIGH = String.fromCharCode(0xf8ff)
 
 export function vehicleMasterCol() {
   return collection(db, 'vehicle_master')
 }
 
-/**
- * Koleksi vehicle_master besar (ribuan dok) → tidak bisa dimuat semua.
- * Default: tampilkan sebagian terurut model. Search: prefix pada `model` (UPPERCASE).
- * Filter merk/tahun/varian dilakukan client-side atas hasil terbatas ini.
- */
-export async function listVehicleMaster({ max = 60 } = {}) {
-  const q = query(vehicleMasterCol(), orderBy('model'), limit(max))
-  const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+/** Jumlah total dokumen (agregasi, murah — 1 read). */
+export async function countVehicleMaster() {
+  const snap = await getCountFromServer(vehicleMasterCol())
+  return snap.data().count
 }
 
-export async function searchVehicleMasterByModel(modelPrefix, { max = 300 } = {}) {
+/**
+ * Ambil satu halaman data (terurut model) dengan cursor untuk "muat lebih banyak".
+ * @returns {{ rows: object[], cursor: any, hasMore: boolean }}
+ */
+export async function fetchVehicleMasterPage({ pageSize = 100, cursor = null } = {}) {
+  const base = [orderBy('model'), orderBy('__name__'), limit(pageSize)]
+  const q = cursor
+    ? query(vehicleMasterCol(), orderBy('model'), orderBy('__name__'), startAfter(cursor), limit(pageSize))
+    : query(vehicleMasterCol(), ...base)
+  const snap = await getDocs(q)
+  const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const nextCursor = snap.docs.length ? snap.docs[snap.docs.length - 1] : null
+  return { rows, cursor: nextCursor, hasMore: snap.docs.length === pageSize }
+}
+
+/** Cari berdasarkan prefix MODEL (UPPERCASE). Filter merk/tahun/varian dilakukan client-side. */
+export async function searchVehicleMasterByModel(modelPrefix, { max = 500 } = {}) {
   const p = String(modelPrefix || '').trim().toUpperCase()
-  if (!p) return listVehicleMaster({ max: 60 })
+  if (!p) return { rows: [], capped: false }
   const q = query(
     vehicleMasterCol(),
     orderBy('model'),
@@ -30,7 +52,8 @@ export async function searchVehicleMasterByModel(modelPrefix, { max = 300 } = {}
     limit(max),
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  return { rows, capped: rows.length >= max }
 }
 
 /** Update satu dokumen master. Dipanggil hanya oleh Root / Otozentrum (dijaga UI + rules). */

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
 import {
-  listVehicleMaster,
+  countVehicleMaster,
+  fetchVehicleMasterPage,
   searchVehicleMasterByModel,
   updateVehicleMaster,
 } from '../../firestore/vehicleMasterAdmin.js'
 import { formatThousands } from '../../utils/numberFormat.js'
 
-const RESULT_CAP = 300
+const PAGE_SIZE = 100
+const SEARCH_CAP = 500
 
 function toNumberOrNull(raw) {
   const digits = String(raw ?? '').replace(/[^\d]/g, '')
@@ -33,8 +35,17 @@ export function VehicleMasterPage() {
   const canEdit = role === 'root' || role === 'tradein'
 
   const [rows, setRows] = useState([])
+  const [total, setTotal] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [err, setErr] = useState('')
+
+  // mode: 'browse' (paginasi seluruh koleksi) | 'search' (hasil pencarian model)
+  const [mode, setMode] = useState('browse')
+  const [cursor, setCursor] = useState(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [searchCapped, setSearchCapped] = useState(false)
+
   const [searchModel, setSearchModel] = useState('')
   const [filterMerk, setFilterMerk] = useState('all')
   const [filterTahun, setFilterTahun] = useState('')
@@ -45,14 +56,20 @@ export function VehicleMasterPage() {
   const [saving, setSaving] = useState(false)
   const [editErr, setEditErr] = useState('')
 
-  async function runSearch(modelPrefix) {
+  async function loadFirstPage() {
     setLoading(true)
     setErr('')
+    setMode('browse')
     try {
-      const data = modelPrefix
-        ? await searchVehicleMasterByModel(modelPrefix, { max: RESULT_CAP })
-        : await listVehicleMaster({ max: 60 })
-      setRows(data)
+      const [cnt, page] = await Promise.all([
+        total == null ? countVehicleMaster() : Promise.resolve(total),
+        fetchVehicleMasterPage({ pageSize: PAGE_SIZE }),
+      ])
+      if (total == null) setTotal(cnt)
+      setRows(page.rows)
+      setCursor(page.cursor)
+      setHasMore(page.hasMore)
+      setSearchCapped(false)
     } catch (e) {
       setErr(e?.message || 'Gagal memuat data vehicle master.')
       setRows([])
@@ -61,8 +78,46 @@ export function VehicleMasterPage() {
     }
   }
 
+  async function loadMore() {
+    if (mode !== 'browse' || !cursor) return
+    setLoadingMore(true)
+    try {
+      const page = await fetchVehicleMasterPage({ pageSize: PAGE_SIZE, cursor })
+      setRows((prev) => [...prev, ...page.rows])
+      setCursor(page.cursor)
+      setHasMore(page.hasMore)
+    } catch (e) {
+      setErr(e?.message || 'Gagal memuat data tambahan.')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  async function runSearch() {
+    const p = searchModel.trim()
+    if (!p) {
+      loadFirstPage()
+      return
+    }
+    setLoading(true)
+    setErr('')
+    setMode('search')
+    try {
+      const res = await searchVehicleMasterByModel(p, { max: SEARCH_CAP })
+      setRows(res.rows)
+      setHasMore(false)
+      setCursor(null)
+      setSearchCapped(res.capped)
+    } catch (e) {
+      setErr(e?.message || 'Gagal mencari data.')
+      setRows([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    runSearch('')
+    loadFirstPage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -114,7 +169,6 @@ export function VehicleMasterPage() {
         kode_demand: String(editForm.kode_demand || '').trim().toUpperCase(),
       }
       await updateVehicleMaster(editRow.id, patch)
-      // update baris di state agar langsung terlihat
       setRows((prev) => prev.map((x) => (x.id === editRow.id ? { ...x, ...patch } : x)))
       setEditRow(null)
     } catch (e) {
@@ -125,12 +179,13 @@ export function VehicleMasterPage() {
   }
 
   const cellStyle = { padding: '9px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 13 }
+  const totalText = total != null ? total.toLocaleString('id-ID') : '…'
 
   return (
     <div className="page">
       <h1 className="h1">Vehicle Master</h1>
       <p className="muted small">
-        Data master kendaraan (harga dasar dsb.) dari koleksi <code>vehicle_master</code>.{' '}
+        Data master kendaraan dari koleksi <code>vehicle_master</code> — total <strong>{totalText}</strong> unit.{' '}
         {canEdit ? 'Anda dapat mengedit.' : 'Mode lihat saja (view only).'}
       </p>
 
@@ -140,7 +195,7 @@ export function VehicleMasterPage() {
           style={{ flexWrap: 'wrap', gap: 10 }}
           onSubmit={(e) => {
             e.preventDefault()
-            runSearch(searchModel.trim())
+            runSearch()
           }}
         >
           <input
@@ -151,8 +206,20 @@ export function VehicleMasterPage() {
             onChange={(e) => setSearchModel(e.target.value)}
           />
           <button className="btn btnPrimary" type="submit" disabled={loading}>
-            {loading ? 'Mencari…' : 'Cari'}
+            {loading ? 'Memuat…' : 'Cari'}
           </button>
+          {mode === 'search' ? (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => {
+                setSearchModel('')
+                loadFirstPage()
+              }}
+            >
+              Reset (tampilkan semua)
+            </button>
+          ) : null}
           <select className="input" style={{ flex: '0 0 150px' }} value={filterMerk} onChange={(e) => setFilterMerk(e.target.value)}>
             <option value="all">Semua Merk</option>
             {merkOptions.map((m) => (
@@ -176,9 +243,12 @@ export function VehicleMasterPage() {
           />
         </form>
         <div className="muted small" style={{ marginTop: 8 }}>
-          {loading ? 'Memuat…' : `Menampilkan ${filtered.length} baris`}
-          {rows.length >= RESULT_CAP ? ` (dibatasi ${RESULT_CAP} — persempit pencarian MODEL)` : ''}
-          {!searchModel.trim() && rows.length >= 60 ? ' — ketik MODEL lalu Cari untuk hasil lebih lengkap' : ''}
+          {loading
+            ? 'Memuat…'
+            : mode === 'search'
+              ? `Hasil pencarian: ${filtered.length} baris${searchCapped ? ` (dibatasi ${SEARCH_CAP} — persempit pencarian)` : ''}`
+              : `Menampilkan ${filtered.length} dari ${totalText} unit${hasMore ? ' — klik "Muat lebih banyak" untuk selebihnya' : ' (semua sudah dimuat)'}`}
+          {(filterMerk !== 'all' || filterTahun || filterVarian) ? ' · filter aktif' : ''}
         </div>
       </div>
 
@@ -198,7 +268,7 @@ export function VehicleMasterPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={canEdit ? 9 : 8} className="muted" style={{ padding: 14 }}>
-                    {loading ? 'Memuat…' : 'Tidak ada data. Coba cari MODEL lain.'}
+                    {loading ? 'Memuat…' : 'Tidak ada data.'}
                   </td>
                 </tr>
               ) : (
@@ -226,6 +296,14 @@ export function VehicleMasterPage() {
           </table>
         </div>
       </div>
+
+      {mode === 'browse' && hasMore ? (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+          <button className="btn" type="button" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? 'Memuat…' : `Muat lebih banyak (${rows.length} / ${totalText})`}
+          </button>
+        </div>
+      ) : null}
 
       {canEdit && editRow ? (
         <div className="modalOverlay" role="dialog" aria-modal="true" onClick={() => setEditRow(null)}>
