@@ -62,7 +62,7 @@ export const CAR_CATALOG = {
     APV: ['GE', 'GX', 'Arena'],
   },
   Mitsubishi: {
-    Xpander: ['GLS M/T', 'Exceed M/T', 'Exceed A/T', 'Ultimate A/T', 'Sport'],
+    Xpander: ['GLS M/T', 'Exceed M/T', 'Exceed A/T', 'Sport M/T', 'Sport A/T', 'Ultimate A/T'],
     'Xpander Cross': ['M/T', 'A/T', 'Premium A/T'],
     'Pajero Sport': ['GLX M/T', 'Exceed A/T', 'Dakar A/T', 'Dakar Ultimate'],
     Triton: ['GLX M/T', 'Exceed A/T'],

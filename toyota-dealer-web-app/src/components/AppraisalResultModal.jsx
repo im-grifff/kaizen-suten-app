@@ -724,25 +724,51 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                           <span>{item.icon}</span> <span>{item.label}</span>
                         </div>
 
-                        <div style={{ background: '#f8fafc', padding: 8, borderRadius: 8, fontSize: 11, color: '#475569', display: 'flex', flexDirection: 'column', gap: 3, border: '1px solid #f1f5f9' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span>⚙️ Jasa Mekanik ({item.frtHours} Jam @ {formatRp(item.hourlyRate)}/jam):</span>
-                            <span>{formatRp(item.grossLaborCost)}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#dc2626', fontWeight: 600 }}>
-                            <span>🎁 Diskon 30% Jasa Trade-In:</span>
-                            <span>-{formatRp(item.discount30)}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>
-                              🔧 Sparepart Genuine: <strong>{cleanPartName(item.partName)}</strong>
-                            </span>
-                            <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatRp(item.partCost)}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #cbd5e1', paddingTop: 4, marginTop: 2, fontWeight: 800, color: '#0f172a' }}>
-                            <span>Total Biaya Servis Pekerjaan Ini:</span>
-                            <span style={{ color: '#1e40af', fontSize: 12 }}>{formatRp(item.totalCustomerCost)}</span>
-                          </div>
+                        <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, color: '#475569' }}>
+                            <tbody>
+                              <tr>
+                                <td style={{ padding: '2px 0', textAlign: 'left', color: '#64748b' }}>
+                                  ⚙️ Jasa Mekanik ({item.frtHours} Jam @ {formatRp(item.hourlyRate)}/jam):
+                                </td>
+                                <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap', color: '#64748b' }}>
+                                  {formatRp(item.grossLaborCost)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: '2px 0', textAlign: 'left', color: '#dc2626', fontWeight: 600 }}>
+                                  🎁 Diskon 30% Jasa Trade-In:
+                                </td>
+                                <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap', color: '#dc2626', fontWeight: 600 }}>
+                                  -{formatRp(item.discount30)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: '2px 0', textAlign: 'left', color: '#047857', fontWeight: 700 }}>
+                                  🛠️ Jasa Bersih (Setelah Diskon):
+                                </td>
+                                <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap', color: '#047857', fontWeight: 700 }}>
+                                  {formatRp(item.netLaborCost)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: '2px 0', textAlign: 'left', color: '#0f172a' }}>
+                                  🔧 Sparepart Genuine: <strong>{cleanPartName(item.partName)}</strong>
+                                </td>
+                                <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap', color: '#0f172a', fontWeight: 700 }}>
+                                  {formatRp(item.partCost)}
+                                </td>
+                              </tr>
+                              <tr style={{ borderTop: '1px dashed #cbd5e1' }}>
+                                <td style={{ padding: '6px 0 2px 0', textAlign: 'left', fontWeight: 800, color: '#0f172a' }}>
+                                  Total Biaya Servis Pekerjaan Ini:
+                                </td>
+                                <td style={{ padding: '6px 0 2px 0', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 900, color: '#1e40af', fontSize: 12 }}>
+                                  {formatRp(item.totalCustomerCost)}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
 
                         <div style={{ background: '#f0f9ff', borderLeft: '3px solid #0284c7', padding: '8px 10px', borderRadius: '0 8px 8px 0', marginTop: 8, fontSize: 11, color: '#0369a1', lineHeight: 1.45 }}>
@@ -770,23 +796,51 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
                     ))}
 
                     {/* Ringkasan Total Biaya Bengkel */}
-                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 10, padding: 12, marginTop: 4 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3, color: '#64748b' }}>
-                        <span>Total Jasa Mekanik (Normal):</span>
-                        <span style={{ textDecoration: 'line-through' }}>{formatRp(totalJasaGross)}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3, color: '#dc2626', fontWeight: 700 }}>
-                        <span>Total Hemat Diskon 30% Jasa:</span>
-                        <span>-{formatRp(totalJasaDiscount)}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4, color: '#475569' }}>
-                        <span>Total Spareparts Genuine / Original:</span>
-                        <strong style={{ color: '#0f172a' }}>{formatRp(totalSparepart)}</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderTop: '2px solid #0f172a', paddingTop: 6, marginTop: 4 }}>
-                        <span style={{ color: '#0f172a', fontWeight: 900 }}>TOTAL BIAYA BENGKEL YANG DIBAYAR:</span>
-                        <strong style={{ color: '#1e40af', fontSize: 14 }}>{formatRp(totalNetCost)}</strong>
-                      </div>
+                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 10, padding: '12px 14px', marginTop: 4 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                        <tbody>
+                          <tr>
+                            <td style={{ padding: '2px 0', textAlign: 'left', color: '#64748b' }}>
+                              Total Jasa Mekanik (Normal):
+                            </td>
+                            <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap', color: '#64748b', textDecoration: 'line-through' }}>
+                              {formatRp(totalJasaGross)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '2px 0', textAlign: 'left', color: '#dc2626', fontWeight: 700 }}>
+                              Total Hemat Diskon 30% Jasa:
+                            </td>
+                            <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap', color: '#dc2626', fontWeight: 700 }}>
+                              -{formatRp(totalJasaDiscount)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '2px 0', textAlign: 'left', color: '#047857', fontWeight: 700 }}>
+                              Total Jasa Bersih (Setelah Diskon Jasa):
+                            </td>
+                            <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap', color: '#047857', fontWeight: 700 }}>
+                              {formatRp(totalJasaNet)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '2px 0', textAlign: 'left', color: '#475569' }}>
+                              Total Spareparts Genuine / Original:
+                            </td>
+                            <td style={{ padding: '2px 0', textAlign: 'right', whiteSpace: 'nowrap', color: '#0f172a', fontWeight: 700 }}>
+                              {formatRp(totalSparepart)}
+                            </td>
+                          </tr>
+                          <tr style={{ borderTop: '2px solid #0f172a' }}>
+                            <td style={{ padding: '8px 0 2px 0', textAlign: 'left', fontWeight: 900, color: '#0f172a', fontSize: 11.5 }}>
+                              TOTAL BIAYA BENGKEL YANG DIBAYAR:
+                            </td>
+                            <td style={{ padding: '8px 0 2px 0', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 900, color: '#1e40af', fontSize: 14 }}>
+                              {formatRp(totalNetCost)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}

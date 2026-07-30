@@ -369,14 +369,64 @@ export function buildAppraisalFromConditions({
   const projectedMidpoint = mathResult.midpoint + totalRepairableGain;
   const projectedGrade = mathResult.kelas_final === 'D' || mathResult.kelas_final === 'C' ? 'B' : 'A';
 
+  const getMesinDefects = () => {
+    const defects = [];
+    if (mesinCondition !== 'normal') {
+      defects.push(mesinCondition === 'ada gejala' ? 'Mesin Ada Gejala' : 'Mesin Bermasalah');
+    }
+    if (acCondition !== 'normal') {
+      defects.push(acCondition === 'butuh service ringan' ? 'AC Perlu Servis' : 'AC Tidak Berfungsi');
+    }
+    if (starterCondition !== 'halus') {
+      defects.push(starterCondition === 'lambat/aki lemah' ? 'Aki/Starter Lemah' : 'Dinamo Starter Bermasalah');
+    }
+    return defects.join(', ') || 'Normal';
+  };
+
+  const getExtDefects = () => {
+    const defects = [];
+    if (bodyCondition !== 'full original') {
+      const bodyMap = {
+        'baret minor': 'Cat Baret Minor',
+        'baret besar': 'Baret Besar / Perlu Cat',
+        'laka ringan': 'Laka Ringan',
+        'laka sedang': 'Laka Sedang',
+        'laka berat':  'Laka Berat',
+      };
+      defects.push(bodyMap[bodyCondition] || bodyCondition);
+    }
+    if (banCondition && banCondition !== 'tebal' && banCondition !== 'normal') {
+      const banMap = {
+        'aus':        'Ban Aus',
+        'velg_baret': 'Velg Baret',
+      };
+      defects.push(banMap[banCondition] || banCondition);
+    }
+    return defects.join(', ') || 'Mulus';
+  };
+
+  const getInteriorDefects = () => {
+    if (interiorCondition === 'kurang rapi') return 'Kabin Kurang Rapi';
+    if (interiorCondition === 'tidak layak') return 'Kabin Tidak Layak';
+    return 'Original';
+  };
+
+  const getTransmisiDefects = () => {
+    if (transmisiCondition === 'perlu_perhatian') return 'Perlu Perhatian / Servis';
+    if (transmisiCondition === 'bermasalah') return 'Transmisi Bermasalah';
+    return 'Normal';
+  };
+
+  const getSuspensiDefects = () => {
+    if (suspensiCondition === 'gluduk' || suspensiCondition === 'bushing_aus') return 'Bunyi Gluduk / Bushing Aus';
+    if (suspensiCondition === 'shock_bocor') return 'Shockbreaker Bocor';
+    return 'Normal';
+  };
+
   const componentBreakdown = [
     {
       komponen:      'Mesin & Kelistrikan',
-      kondisi:       [
-        mesinCondition !== 'normal' ? `mesin: ${mesinCondition}` : '',
-        acCondition !== 'normal' ? `ac: ${acCondition}` : '',
-        starterCondition !== 'halus' ? `starter/aki: ${starterCondition}` : '',
-      ].filter(Boolean).join(', ') || 'normal',
+      kondisi:       getMesinDefects(),
       skor:          mesScore,
       grade:         mesRet.label,
       retensi:       mesCombinedRet,
@@ -387,7 +437,7 @@ export function buildAppraisalFromConditions({
     },
     {
       komponen:      'Eksterior / Body',
-      kondisi:       bodyCondition,
+      kondisi:       getExtDefects(),
       ban:           banCondition,
       skor:          extScore,
       grade:         extRet.label,
@@ -399,7 +449,7 @@ export function buildAppraisalFromConditions({
     },
     {
       komponen:      'Interior / Kabin',
-      kondisi:       interiorCondition,
+      kondisi:       getInteriorDefects(),
       skor:          intScore,
       grade:         intRet.label,
       retensi:       intRet.retensi,
@@ -410,7 +460,7 @@ export function buildAppraisalFromConditions({
     },
     {
       komponen:      'Transmisi',
-      kondisi:       transmisiCondition,
+      kondisi:       getTransmisiDefects(),
       skor:          transScore,
       grade:         transRet.label,
       retensi:       transRet.retensi,
@@ -421,7 +471,7 @@ export function buildAppraisalFromConditions({
     },
     {
       komponen:      'Suspensi / Kaki-Kaki',
-      kondisi:       suspensiCondition,
+      kondisi:       getSuspensiDefects(),
       skor:          suspScore,
       grade:         suspRet.label,
       retensi:       suspRet.retensi,
