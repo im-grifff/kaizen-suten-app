@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
 import {
   countVehicleMaster,
+  createVehicleMaster,
   fetchVehicleMasterPage,
-  searchVehicleMasterByModel,
+  MERK_OPTIONS,
+  searchVehicleMaster,
   updateVehicleMaster,
 } from '../../firestore/vehicleMasterAdmin.js'
 import { formatThousands } from '../../utils/numberFormat.js'
@@ -31,7 +33,7 @@ const EMPTY_EDIT = {
 
 export function VehicleMasterPage() {
   const { role } = useAuth()
-  // Edit hanya untuk Root & Otozentrum (tradein). Selain itu view-only.
+  // Tambah/Edit hanya untuk Root & Otozentrum (tradein). Selain itu view-only.
   const canEdit = role === 'root' || role === 'tradein'
 
   const [rows, setRows] = useState([])
@@ -40,26 +42,28 @@ export function VehicleMasterPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [err, setErr] = useState('')
 
-  // mode: 'browse' (paginasi seluruh koleksi) | 'search' (hasil pencarian model)
-  const [mode, setMode] = useState('browse')
+  const [mode, setMode] = useState('browse') // 'browse' | 'search'
   const [cursor, setCursor] = useState(null)
   const [hasMore, setHasMore] = useState(false)
   const [searchCapped, setSearchCapped] = useState(false)
 
-  const [searchModel, setSearchModel] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [filterMerk, setFilterMerk] = useState('all')
   const [filterTahun, setFilterTahun] = useState('')
   const [filterVarian, setFilterVarian] = useState('')
 
-  const [editRow, setEditRow] = useState(null)
-  const [editForm, setEditForm] = useState(EMPTY_EDIT)
+  // modal: null | { mode: 'edit'|'create', id?: string }
+  const [modal, setModal] = useState(null)
+  const [form, setForm] = useState(EMPTY_EDIT)
   const [saving, setSaving] = useState(false)
-  const [editErr, setEditErr] = useState('')
+  const [modalErr, setModalErr] = useState('')
 
   async function loadFirstPage() {
     setLoading(true)
     setErr('')
     setMode('browse')
+    setSearchTerm('')
+    setFilterMerk('all')
     try {
       const [cnt, page] = await Promise.all([
         total == null ? countVehicleMaster() : Promise.resolve(total),
@@ -93,9 +97,10 @@ export function VehicleMasterPage() {
     }
   }
 
-  async function runSearch() {
-    const p = searchModel.trim()
-    if (!p) {
+  // Cari di SELURUH database (model atau merk). term kosong -> kembali browse.
+  async function runSearch(term) {
+    const t = String(term || '').trim()
+    if (!t) {
       loadFirstPage()
       return
     }
@@ -103,7 +108,7 @@ export function VehicleMasterPage() {
     setErr('')
     setMode('search')
     try {
-      const res = await searchVehicleMasterByModel(p, { max: SEARCH_CAP })
+      const res = await searchVehicleMaster(t, { max: SEARCH_CAP })
       setRows(res.rows)
       setHasMore(false)
       setCursor(null)
@@ -116,32 +121,37 @@ export function VehicleMasterPage() {
     }
   }
 
+  function onSelectMerk(merk) {
+    setFilterMerk(merk)
+    setSearchTerm('')
+    if (merk === 'all') loadFirstPage()
+    else runSearch(merk)
+  }
+
   useEffect(() => {
     loadFirstPage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const merkOptions = useMemo(() => {
-    const set = new Set()
-    for (const r of rows) if (r.merk) set.add(String(r.merk))
-    return [...set].sort()
-  }, [rows])
-
+  // Filter client-side (tahun/varian) di atas hasil DB saat ini.
   const filtered = useMemo(() => {
     let list = rows
-    if (filterMerk !== 'all') list = list.filter((r) => String(r.merk || '') === filterMerk)
     const yr = filterTahun.trim()
     if (yr) list = list.filter((r) => String(r.tahun || '').includes(yr))
     const v = filterVarian.trim().toLowerCase()
     if (v) list = list.filter((r) => String(r.varian || '').toLowerCase().includes(v))
     return list
-  }, [rows, filterMerk, filterTahun, filterVarian])
+  }, [rows, filterTahun, filterVarian])
 
-  function openEditor(r) {
-    if (!canEdit) return
-    setEditErr('')
-    setEditRow(r)
-    setEditForm({
+  function openCreate() {
+    setModalErr('')
+    setForm(EMPTY_EDIT)
+    setModal({ mode: 'create' })
+  }
+
+  function openEdit(r) {
+    setModalErr('')
+    setForm({
       merk: r.merk || '',
       model: r.model || '',
       varian: r.varian || '',
@@ -151,28 +161,43 @@ export function VehicleMasterPage() {
       harga_dasar: r.harga_dasar != null ? formatThousands(r.harga_dasar) : '',
       kode_demand: r.kode_demand || '',
     })
+    setModal({ mode: 'edit', id: r.id })
   }
 
-  async function saveEditor() {
-    if (!canEdit || !editRow?.id) return
+  function buildPatch() {
+    return {
+      merk: String(form.merk || '').trim().toUpperCase(),
+      model: String(form.model || '').trim().toUpperCase(),
+      varian: String(form.varian || '').trim(),
+      tahun: toNumberOrNull(form.tahun),
+      transmisi: String(form.transmisi || '').trim(),
+      jenis_mesin: form.jenis_mesin === '' ? null : Number(String(form.jenis_mesin).replace(',', '.')),
+      harga_dasar: toNumberOrNull(form.harga_dasar),
+      kode_demand: String(form.kode_demand || '').trim().toUpperCase(),
+    }
+  }
+
+  async function saveModal() {
+    if (!canEdit || !modal) return
+    if (!form.merk.trim() || !form.model.trim()) {
+      setModalErr('Merk dan Model wajib diisi.')
+      return
+    }
     setSaving(true)
-    setEditErr('')
+    setModalErr('')
     try {
-      const patch = {
-        merk: String(editForm.merk || '').trim().toUpperCase(),
-        model: String(editForm.model || '').trim().toUpperCase(),
-        varian: String(editForm.varian || '').trim(),
-        tahun: toNumberOrNull(editForm.tahun),
-        transmisi: String(editForm.transmisi || '').trim(),
-        jenis_mesin: editForm.jenis_mesin === '' ? null : Number(String(editForm.jenis_mesin).replace(',', '.')),
-        harga_dasar: toNumberOrNull(editForm.harga_dasar),
-        kode_demand: String(editForm.kode_demand || '').trim().toUpperCase(),
+      const patch = buildPatch()
+      if (modal.mode === 'create') {
+        const created = await createVehicleMaster(patch)
+        setRows((prev) => [created, ...prev])
+        setTotal((t) => (t == null ? t : t + 1))
+      } else {
+        await updateVehicleMaster(modal.id, patch)
+        setRows((prev) => prev.map((x) => (x.id === modal.id ? { ...x, ...patch } : x)))
       }
-      await updateVehicleMaster(editRow.id, patch)
-      setRows((prev) => prev.map((x) => (x.id === editRow.id ? { ...x, ...patch } : x)))
-      setEditRow(null)
+      setModal(null)
     } catch (e) {
-      setEditErr(e?.message || 'Gagal menyimpan. Pastikan Anda punya izin (Root/Otozentrum).')
+      setModalErr(e?.message || 'Gagal menyimpan. Pastikan Anda punya izin (Root/Otozentrum).')
     } finally {
       setSaving(false)
     }
@@ -183,11 +208,20 @@ export function VehicleMasterPage() {
 
   return (
     <div className="page">
-      <h1 className="h1">Vehicle Master</h1>
-      <p className="muted small">
-        Data master kendaraan dari koleksi <code>vehicle_master</code> — total <strong>{totalText}</strong> unit.{' '}
-        {canEdit ? 'Anda dapat mengedit.' : 'Mode lihat saja (view only).'}
-      </p>
+      <div className="row" style={{ alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <h1 className="h1">Vehicle Master</h1>
+          <p className="muted small">
+            Data master kendaraan dari koleksi <code>vehicle_master</code> — total <strong>{totalText}</strong> unit.{' '}
+            {canEdit ? 'Anda dapat menambah & mengedit.' : 'Mode lihat saja (view only).'}
+          </p>
+        </div>
+        {canEdit ? (
+          <button type="button" className="btn btnPrimary" onClick={openCreate} style={{ whiteSpace: 'nowrap' }}>
+            + Tambah
+          </button>
+        ) : null}
+      </div>
 
       <div className="card" style={{ marginTop: 12 }}>
         <form
@@ -195,34 +229,28 @@ export function VehicleMasterPage() {
           style={{ flexWrap: 'wrap', gap: 10 }}
           onSubmit={(e) => {
             e.preventDefault()
-            runSearch()
+            setFilterMerk('all')
+            runSearch(searchTerm)
           }}
         >
           <input
             className="input"
-            style={{ flex: '1 1 220px' }}
-            placeholder="Cari MODEL (mis. CALYA, INNOVA, MUX)…"
-            value={searchModel}
-            onChange={(e) => setSearchModel(e.target.value)}
+            style={{ flex: '1 1 240px' }}
+            placeholder="Cari (Model atau Merk) — mis. CALYA, INNOVA, TOYOTA…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
           <button className="btn btnPrimary" type="submit" disabled={loading}>
             {loading ? 'Memuat…' : 'Cari'}
           </button>
           {mode === 'search' ? (
-            <button
-              className="btn"
-              type="button"
-              onClick={() => {
-                setSearchModel('')
-                loadFirstPage()
-              }}
-            >
-              Reset (tampilkan semua)
+            <button className="btn" type="button" onClick={() => loadFirstPage()}>
+              Reset
             </button>
           ) : null}
-          <select className="input" style={{ flex: '0 0 150px' }} value={filterMerk} onChange={(e) => setFilterMerk(e.target.value)}>
+          <select className="input" style={{ flex: '0 0 160px' }} value={filterMerk} onChange={(e) => onSelectMerk(e.target.value)}>
             <option value="all">Semua Merk</option>
-            {merkOptions.map((m) => (
+            {MERK_OPTIONS.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
@@ -247,8 +275,7 @@ export function VehicleMasterPage() {
             ? 'Memuat…'
             : mode === 'search'
               ? `Hasil pencarian: ${filtered.length} baris${searchCapped ? ` (dibatasi ${SEARCH_CAP} — persempit pencarian)` : ''}`
-              : `Menampilkan ${filtered.length} dari ${totalText} unit${hasMore ? ' — klik "Muat lebih banyak" untuk selebihnya' : ' (semua sudah dimuat)'}`}
-          {(filterMerk !== 'all' || filterTahun || filterVarian) ? ' · filter aktif' : ''}
+              : `Menampilkan ${filtered.length} dari ${totalText} unit${hasMore ? ' — klik "Muat lebih banyak"' : ' (semua dimuat)'}`}
         </div>
       </div>
 
@@ -286,7 +313,7 @@ export function VehicleMasterPage() {
                     <td style={cellStyle}>{r.kode_demand || '-'}</td>
                     {canEdit ? (
                       <td style={cellStyle}>
-                        <button type="button" className="btn" onClick={() => openEditor(r)}>Edit</button>
+                        <button type="button" className="btn" onClick={() => openEdit(r)}>Edit</button>
                       </td>
                     ) : null}
                   </tr>
@@ -305,15 +332,17 @@ export function VehicleMasterPage() {
         </div>
       ) : null}
 
-      {canEdit && editRow ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" onClick={() => setEditRow(null)}>
+      {canEdit && modal ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" onClick={() => setModal(null)}>
           <div className="modalCard" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, width: '100%' }}>
-            <h2 className="h2" style={{ margin: 0 }}>Edit Vehicle Master</h2>
-            {editErr ? <div className="alert alert--error" style={{ marginTop: 10 }}>{editErr}</div> : null}
+            <h2 className="h2" style={{ margin: 0 }}>
+              {modal.mode === 'create' ? 'Tambah Vehicle Master' : 'Edit Vehicle Master'}
+            </h2>
+            {modalErr ? <div className="alert alert--error" style={{ marginTop: 10 }}>{modalErr}</div> : null}
 
             {[
-              { k: 'merk', label: 'Merk' },
-              { k: 'model', label: 'Model' },
+              { k: 'merk', label: 'Merk *' },
+              { k: 'model', label: 'Model *' },
               { k: 'varian', label: 'Varian' },
               { k: 'tahun', label: 'Tahun', numeric: true },
               { k: 'transmisi', label: 'Transmisi' },
@@ -325,20 +354,20 @@ export function VehicleMasterPage() {
                 <label className="label">{f.label}</label>
                 <input
                   className="input"
-                  value={editForm[f.k]}
+                  value={form[f.k]}
                   inputMode={f.numeric || f.money ? 'numeric' : undefined}
                   onChange={(e) => {
                     const v = f.money ? formatThousands(e.target.value) : f.numeric ? e.target.value.replace(/[^\d]/g, '') : e.target.value
-                    setEditForm((s) => ({ ...s, [f.k]: v }))
+                    setForm((s) => ({ ...s, [f.k]: v }))
                   }}
                 />
               </div>
             ))}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
-              <button type="button" className="btn" onClick={() => setEditRow(null)} disabled={saving}>Batal</button>
-              <button type="button" className="btn btnPrimary" onClick={saveEditor} disabled={saving}>
-                {saving ? 'Menyimpan…' : 'Simpan'}
+              <button type="button" className="btn" onClick={() => setModal(null)} disabled={saving}>Batal</button>
+              <button type="button" className="btn btnPrimary" onClick={saveModal} disabled={saving}>
+                {saving ? 'Menyimpan…' : modal.mode === 'create' ? 'Tambah' : 'Simpan'}
               </button>
             </div>
           </div>
