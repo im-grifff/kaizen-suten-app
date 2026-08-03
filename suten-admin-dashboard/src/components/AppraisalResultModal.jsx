@@ -300,6 +300,47 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
           boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
         }}
       >
+        {/* Jejak Re-Appraisal — supaya admin tahu angka ini bukan lagi hasil hitung customer */}
+        {result.reappraisedAt ? (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: '8px 12px',
+              borderRadius: 10,
+              fontSize: 11,
+              background: 'rgba(56, 189, 248, 0.12)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              color: '#bae6fd',
+            }}
+          >
+            🔄 Hasil ini sudah di-<strong>Re-Appraisal</strong>
+            {Number(result.reappraisalCount) > 1 ? ` ${result.reappraisalCount}×` : ''} oleh{' '}
+            <strong>{result.reappraisedBy || '-'}</strong>
+            {result.reappraisedByRole ? ` (${result.reappraisedByRole})` : ''} pada{' '}
+            {new Date(result.reappraisedAt).toLocaleString('id-ID')}.
+          </div>
+        ) : null}
+
+        {/* Narasi AI tidak ikut ter-regenerate → angka & narasi bisa tidak sinkron */}
+        {result.rekomendasi_ai_stale ? (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: '8px 12px',
+              borderRadius: 10,
+              fontSize: 11,
+              background: 'rgba(234, 179, 8, 0.12)',
+              border: '1px solid rgba(234, 179, 8, 0.45)',
+              color: '#fde68a',
+            }}
+          >
+            ⚠️ Narasi &amp; rekomendasi AI di bawah <strong>belum diperbarui</strong> setelah
+            perhitungan ulang terakhir, jadi bisa menyebut angka lama. Angka harga, grade, dan
+            breakdown komponen sudah yang terbaru. Jalankan Re-Appraisal lagi untuk menyegarkan
+            narasinya.
+          </div>
+        ) : null}
+
         {/* Top Control Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>

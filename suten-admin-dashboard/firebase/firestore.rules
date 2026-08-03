@@ -14,6 +14,28 @@ service cloud.firestore {
       return roleIs('root');
     }
 
+    // Field yang boleh ditulis oleh fitur Re-Appraisal. Dipakai untuk membatasi
+    // role `sa` supaya hanya bisa menghitung ulang taksasi, bukan mengubah
+    // stage / harga fix / data customer. Harus sinkron dengan `patch` di
+    // suten-admin-dashboard/src/lib/reAppraisal.js.
+    function reappraisalWritableKeys() {
+      return [
+        'bodyCondition', 'banCondition', 'interiorCondition', 'mesinCondition',
+        'transmisiCondition', 'suspensiCondition', 'acCondition', 'starterCondition',
+        'km', 'year', 'statusPajak', 'bulan_telat_pajak', 'dokumen_kurang',
+        'sellingPoints', 'expectLowPrice', 'merk', 'model', 'tipe', 'transmission',
+        'base_price', 'kodeDemand', 'score_total', 'kelas_final', 'harga_min', 'harga_max',
+        'harga_setelah_kondisi', 'deduksi_total', 'midpoint', 'flag_review_mesin',
+        'override_applied', 'km_per_year', 'componentBreakdown', 'categoryScores',
+        'categoryRetentions', 'projected_score_after_repair',
+        'projected_grade_after_repair', 'projected_midpoint_after_repair',
+        'repairEstimatesData', 'estimateLow', 'estimateHigh', 'serviceHistory',
+        'rekomendasi_ai', 'rekomendasi_ai_stale', 'totalBonusValue',
+        'reappraisedAt', 'reappraisedBy', 'reappraisedByRole',
+        'reappraisalCount', 'reappraisalHistory'
+      ];
+    }
+
     // App pelanggan: Anonymous Auth — token sering TIDAK memenuhi `role == null` seperti di dokumentasi.
     // Gunakan provider `anonymous` eksplisit, atau tidak ada claim `role` (fallback).
     function isAnonymousProvider() {
@@ -126,8 +148,10 @@ service cloud.firestore {
     }
 
     match /tradein_requests/{id} {
+      // `sa` (Sales Advisor) hanya dipakai untuk Re-Appraisal: boleh baca & update,
+      // tapi tidak boleh hapus dan tidak punya akses ke collection lain.
       allow read: if isRoot()
-        || roleIn(['tradein', 'supervisor', 'aftersales'])
+        || roleIn(['tradein', 'supervisor', 'aftersales', 'sa'])
         || tradeinReadableByWaSession();
       allow create: if isCustomerApp()
         && request.resource.data.customerUid == request.auth.uid
@@ -138,6 +162,11 @@ service cloud.firestore {
       allow update: if isRoot() || roleIn(['tradein', 'supervisor']);
       // Hapus request trade-in: hanya root (fitur Edit/Hapus di admin).
       allow delete: if isRoot();
+      // `sa` hanya boleh menulis field yang dihasilkan Re-Appraisal.
+      // Stage, harga fix, identitas customer, dsb TIDAK boleh disentuh.
+      allow update: if roleIs('sa')
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(reappraisalWritableKeys());
       // Customer boleh menekan "Request Inspeksi" dari app-nya:
       // hanya untuk memindahkan stage `new` → `contacted` dan hanya jika estimasi admin sudah ada.
       allow update: if isCustomerApp()
@@ -173,6 +202,21 @@ service cloud.firestore {
     match /vehicle_master/{id} {
       allow read: if signedIn();
       allow write: if isRoot() || roleIs('tradein');
+    }
+
+    // Master flat rate (jasa bengkel) & sparepart genuine — dipakai mesin taksasi
+    // untuk menghitung estimasi biaya perbaikan, baik dari app customer maupun
+    // dari fitur Re-Appraisal di admin. Sebelumnya tidak punya match block sama
+    // sekali sehingga tertangkap `deny all` di bawah, dan lookup selalu jatuh ke
+    // estimasi statis. Baca: semua yang login. Tulis: root (data di-seed via tools).
+    match /flatrate_master/{id} {
+      allow read: if signedIn();
+      allow write: if isRoot();
+    }
+
+    match /sparepart_master/{id} {
+      allow read: if signedIn();
+      allow write: if isRoot();
     }
 
     match /plate_index/{plate} {

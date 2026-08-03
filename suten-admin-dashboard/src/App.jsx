@@ -15,6 +15,7 @@ import { NotAuthorizedPage } from './screens/app/NotAuthorizedPage.jsx'
 function OverviewRoute() {
   const { role } = useAuth()
   if (role === 'otoxpert') return <Navigate to="/app/customers" replace />
+  if (role === 'sa') return <Navigate to="/app/tradein-requests" replace />
   return <DashboardHome />
 }
 
@@ -63,7 +64,7 @@ export default function App() {
           <Route
             path="tradein-requests"
             element={
-              <RequireRole allow={['tradein', 'supervisor', 'otoxpert']}>
+              <RequireRole allow={['tradein', 'supervisor', 'otoxpert', 'sa']}>
                 <TradeInRequestsPage />
               </RequireRole>
             }

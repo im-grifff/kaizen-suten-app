@@ -9,7 +9,8 @@ export async function getRoleFromClaims(user) {
     role === 'supervisor' ||
     role === 'aftersales' ||
     role === 'tradein' ||
-    role === 'otoxpert'
+    role === 'otoxpert' ||
+    role === 'sa'
   )
     return role
   return null

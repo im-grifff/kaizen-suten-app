@@ -1,3 +1,7 @@
+// ⚠️ MIRROR dari toyota-dealer-web-app/src/lib/appraisalUtils.js
+// Mesin taksasi HARUS identik di kedua app, kalau tidak hasil Re-Appraisal admin
+// akan beda dari taksasi asli customer. Ubah di sini = wajib ubah di sana juga.
+// Satu-satunya perbedaan yang diizinkan: path import firebase.
 /**
  * Formatting & Appraisal Utils
  */
@@ -13,22 +17,20 @@ export function parseRp(str) {
   return Number(cleaned) || 0;
 }
 
-// Default Criteria Weights
+// Default Criteria Weights (Industry Standard Trade-In Weights)
 export const DEFAULT_WEIGHTS = {
-  demand: 0.25,
-  exterior: 0.15,
-  interior: 0.15,
-  mesin: 0.20,
+  mesin: 0.30,
+  exterior: 0.25,
+  odometer: 0.15,
+  interior: 0.10,
   transmisi: 0.10,
-  suspensi: 0.05,
-  odometer: 0.10,
-  demand_weight: 0.25,
-  exterior_weight: 0.15,
-  interior_weight: 0.15,
-  mesin_weight: 0.20,
+  suspensi: 0.10,
+  mesin_weight: 0.30,
+  exterior_weight: 0.25,
+  odometer_weight: 0.15,
+  interior_weight: 0.10,
   transmisi_weight: 0.10,
-  suspensi_weight: 0.05,
-  odometer_weight: 0.10,
+  suspensi_weight: 0.10,
 };
 
 // Moving Code Multipliers / Demand Retention
@@ -68,10 +70,10 @@ export const DOKUMEN_DEDUCTIONS = {
  * Grade D (KM Sangat Tinggi): > 40.000 km/tahun → Maks 30–50% (pertimbangkan tolak)
  */
 export const DEFAULT_ODO_BRACKETS = [
-  { min_kpy: 0,     max_kpy: 9999,  retensi_percent: 102, grade: 'A', label: 'KM Rendah — Bonus +2%'          },
-  { min_kpy: 10000, max_kpy: 20000, retensi_percent: 100, grade: 'B', label: 'KM Normal'                       },
-  { min_kpy: 20001, max_kpy: 40000, retensi_percent: 88,  grade: 'C', label: 'KM Tinggi — Potongan 5–10%'      },
-  { min_kpy: 40001, max_kpy: null,  retensi_percent: 60,  grade: 'D', label: 'KM Sangat Tinggi — Perlu Kajian' },
+  { min_kpy: 0,     max_kpy: 9999,  retensi_percent: 102,  grade: 'A', label: 'KM Rendah (<10rb/thn) — Bonus +2%' },
+  { min_kpy: 10000, max_kpy: 20000, retensi_percent: 100,  grade: 'B', label: 'KM Normal (10-20rb/thn)' },
+  { min_kpy: 20001, max_kpy: 40000, retensi_percent: 92.5, grade: 'C', label: 'KM Tinggi (20-40rb/thn)' },
+  { min_kpy: 40001, max_kpy: null,  retensi_percent: 60,   grade: 'D', label: 'KM Sangat Tinggi (>40rb/thn)' },
 ];
 
 // Default Score Retention Brackets
@@ -91,8 +93,15 @@ export const DEFAULT_SCORE_BRACKETS = {
   ],
   mesin: [
     { min_score: 85, max_score: 100, retensi_percent: 100, level_label: 'Normal' },
-    { min_score: 60, max_score: 84, retensi_percent: 80, level_label: 'Perlu Perhatian' },
-    { min_score: 0, max_score: 59, retensi_percent: 55, level_label: 'Bermasalah' },
+    { min_score: 65, max_score: 84, retensi_percent: 80, level_label: 'Perlu Perhatian' },
+    { min_score: 0, max_score: 64, retensi_percent: 55, level_label: 'Bermasalah' },
+  ],
+  kelistrikan: [
+    { min_score: 98, max_score: 100, retensi_percent: 100,  level_label: 'Normal' },
+    { min_score: 95, max_score: 97,  retensi_percent: 98.5, level_label: 'Aki Lemah (Perlu Ganti Aki)' },
+    { min_score: 90, max_score: 94,  retensi_percent: 96,   level_label: 'Servis AC Ringan' },
+    { min_score: 75, max_score: 89,  retensi_percent: 85,   level_label: 'Perlu Perhatian (Dinamo Starter)' },
+    { min_score: 0,  max_score: 74,  retensi_percent: 60,   level_label: 'Kelistrikan Bermasalah (Kompresor AC)' },
   ],
   transmisi: [
     { min_score: 85, max_score: 100, retensi_percent: 100, level_label: 'Normal' },

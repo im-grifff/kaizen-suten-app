@@ -64,11 +64,13 @@ export function AppLayout() {
 
   const isRoot = role === 'root'
   const isOtoxpert = role === 'otoxpert'
-  const showOverview = !isOtoxpert
+  // SA (Sales Advisor): hanya Trade-In Requests, untuk menjalankan Re-Appraisal.
+  const isSa = role === 'sa'
+  const showOverview = !isOtoxpert && !isSa
   const showCustomers = isRoot || isOtoxpert || role === 'supervisor' || role === 'aftersales'
   const showPricelist = isRoot || role === 'supervisor'
   const showTshop = isRoot || role === 'aftersales'
-  const showTradein = isRoot || isOtoxpert || role === 'tradein' || role === 'supervisor'
+  const showTradein = isRoot || isOtoxpert || isSa || role === 'tradein' || role === 'supervisor'
   const showVehicleMaster = isRoot || role === 'supervisor' || role === 'tradein'
 
   return (

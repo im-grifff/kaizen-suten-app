@@ -15,7 +15,7 @@ import admin from 'firebase-admin'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const ALLOWED = ['root', 'supervisor', 'aftersales', 'tradein']
+const ALLOWED = ['root', 'supervisor', 'aftersales', 'tradein', 'otoxpert', 'sa']
 
 function getArg(name) {
   const idx = process.argv.indexOf(`--${name}`)

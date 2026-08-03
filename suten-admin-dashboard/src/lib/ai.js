@@ -1,3 +1,7 @@
+// ⚠️ MIRROR dari toyota-dealer-web-app/src/lib/ai.js
+// Mesin taksasi HARUS identik di kedua app, kalau tidak hasil Re-Appraisal admin
+// akan beda dari taksasi asli customer. Ubah di sini = wajib ubah di sana juga.
+// Satu-satunya perbedaan yang diizinkan: path import firebase.
 import { formatRp } from './appraisalUtils.js';
 
 /**

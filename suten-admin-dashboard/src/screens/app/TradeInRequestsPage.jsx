@@ -13,6 +13,8 @@ import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '.
 import { formatThousands } from '../../utils/numberFormat.js'
 import { Timestamp } from 'firebase/firestore'
 import { AppraisalResultModal } from '../../components/AppraisalResultModal.jsx'
+import { ReAppraisalModal } from '../../components/ReAppraisalModal.jsx'
+import { canReAppraise } from '../../lib/reAppraisal.js'
 
 const TABS = TRADEIN_TABS
 
@@ -115,8 +117,11 @@ export function TradeInRequestsPage() {
   // Root & Supervisor: boleh edit request + WA ke sales.
   // Hapus tetap root-only (rules Firestore: delete tradein_requests hanya root).
   const isRootOrSupervisor = isRoot || role === 'supervisor'
+  // SA (Sales Advisor): akses baca + Re-Appraisal saja, tanpa aksi pipeline.
+  const isSa = role === 'sa'
 
   const [appraisalRow, setAppraisalRow] = useState(null)
+  const [reapprRow, setReapprRow] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState('')
   const [editErr, setEditErr] = useState('')
@@ -216,7 +221,8 @@ export function TradeInRequestsPage() {
   /** Kolom harga fix + alasan hanya dari tab Inspected ke bawah, atau tab All (read-only). */
   const showFixAndReason =
     tab === 'inspected' || tab === 'dealing' || tab === 'cancel' || tab === 'all'
-  const estimateEditable = tab === 'new' && !isOtoxpert
+  // SA hanya boleh Re-Appraisal — estimasi/harga fix tetap milik tim pipeline.
+  const estimateEditable = tab === 'new' && !isOtoxpert && !isSa
   const isAllTab = tab === 'all'
 
   const isTradeInOnly = role === 'tradein'
@@ -826,7 +832,7 @@ export function TradeInRequestsPage() {
 
                       {showFixAndReason ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                          {tab === 'dealing' || tab === 'cancel' || isAllTab || isOtoxpert ? (
+                          {tab === 'dealing' || tab === 'cancel' || isAllTab || isOtoxpert || isSa ? (
                             <strong>
                               {r.fixedPrice != null && Number(r.fixedPrice) > 0
                                 ? `Rp${formatIdrCompact(String(r.fixedPrice))}`
@@ -853,7 +859,7 @@ export function TradeInRequestsPage() {
 
                       {showFixAndReason ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                          {isAllTab || isOtoxpert ? (
+                          {isAllTab || isOtoxpert || isSa ? (
                             <span className="muted" style={{ whiteSpace: 'pre-wrap' }}>
                               {String(r.cancelReason || '').trim() || '—'}
                             </span>
@@ -903,6 +909,17 @@ export function TradeInRequestsPage() {
                               Hasil Taksasi
                             </button>
                           ) : null}
+                          {canReAppraise(role, stageOfRow) ? (
+                            <button
+                              type="button"
+                              className="btn"
+                              title="Hitung ulang taksasi dan ganti hasil yang dilihat customer"
+                              onClick={() => setReapprRow(r)}
+                            >
+                              🔄 Re-Appraisal
+                              {Number(r.reappraisalCount) > 0 ? ` (${r.reappraisalCount}×)` : ''}
+                            </button>
+                          ) : null}
                           {tab === 'new' ? (
                             <>
                               {isRootOrSupervisor ? (
@@ -910,7 +927,7 @@ export function TradeInRequestsPage() {
                                   WA ke sales
                                 </button>
                               ) : null}
-                              {!tradeinHidesPipelineActions(r) ? (
+                              {!tradeinHidesPipelineActions(r) && !isSa ? (
                                 <>
                                   <button type="button" className="btn btnPrimary" onClick={() => chatNew(r)}>
                                     Chat WhatsApp
@@ -949,7 +966,7 @@ export function TradeInRequestsPage() {
                                   WA ke sales
                                 </button>
                               ) : null}
-                              {!tradeinHidesPipelineActions(r) ? (
+                              {!tradeinHidesPipelineActions(r) && !isSa ? (
                                 <>
                                   <button type="button" className="btn btnPrimary" onClick={() => chatNew(r)}>
                                     Chat WhatsApp
@@ -983,7 +1000,7 @@ export function TradeInRequestsPage() {
                                   WA ke sales
                                 </button>
                               ) : null}
-                              {!tradeinHidesPipelineActions(r) ? (
+                              {!tradeinHidesPipelineActions(r) && !isSa ? (
                                 <>
                                   <button type="button" className="btn btnPrimary" onClick={() => chatNew(r)}>
                                     Chat WhatsApp
@@ -1017,7 +1034,7 @@ export function TradeInRequestsPage() {
                                   WA ke sales
                                 </button>
                               ) : null}
-                              {!tradeinHidesPipelineActions(r) ? (
+                              {!tradeinHidesPipelineActions(r) && !isSa ? (
                                 <>
                                   <button type="button" className="btn btnPrimary" onClick={() => chatInspected(r)}>
                                     Chat WhatsApp
@@ -1049,7 +1066,7 @@ export function TradeInRequestsPage() {
                               )}
                             </>
                           ) : null}
-                          {tab === 'dealing' ? (
+                          {tab === 'dealing' && !isSa ? (
                             <button type="button" className="btn btnPrimary" onClick={() => chatDealingToSales(r)}>
                               WA ke sales
                             </button>
@@ -1068,6 +1085,15 @@ export function TradeInRequestsPage() {
 
       {appraisalRow ? (
         <AppraisalResultModal result={appraisalRow} onClose={() => setAppraisalRow(null)} />
+      ) : null}
+
+      {reapprRow ? (
+        <ReAppraisalModal
+          row={reapprRow}
+          actor={{ email: user?.email || '', role }}
+          onClose={() => setReapprRow(null)}
+          onSave={(patch) => updateTradeinRequest(reapprRow.id, patch)}
+        />
       ) : null}
 
       {isRootOrSupervisor && editOpen ? (
