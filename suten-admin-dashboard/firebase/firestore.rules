@@ -118,6 +118,10 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/wa_sessions/$(request.auth.uid))
         && request.resource.data.customerWaKey
           == get(/databases/$(database)/documents/wa_sessions/$(request.auth.uid)).data.waKey;
+      // Admin juga perlu `create`: saat Root/Supervisor mengganti plat lewat fitur Edit,
+      // index untuk plat baru belum ada, dan `set(..., merge)` di doc kosong = create.
+      allow create: if (isRoot() || roleIn(['tradein', 'supervisor']))
+        && request.resource.data.plateKey == plateKey;
       allow update, delete: if isRoot() || roleIn(['tradein', 'supervisor']);
     }
 

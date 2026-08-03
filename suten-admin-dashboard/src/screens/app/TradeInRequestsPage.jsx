@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '../../state/AuthContext.jsx'
-import { deleteTradeinRequest, listenTradeinRequests, updateTradeinRequest, updateTradeinRequestRoot } from '../../firestore/tradeinRequests.js'
+import { deleteTradeinRequest, listenTradeinRequests, updateTradeinRequest, updateTradeinRequestAdmin } from '../../firestore/tradeinRequests.js'
 import { normalizePlate } from '../../utils/plateFormat.js'
 import {
   adminStageToStatus,
@@ -112,6 +112,9 @@ export function TradeInRequestsPage() {
   const [savingId, setSavingId] = useState('')
   const isRoot = role === 'root'
   const isOtoxpert = role === 'otoxpert'
+  // Root & Supervisor: boleh edit request + WA ke sales.
+  // Hapus tetap root-only (rules Firestore: delete tradein_requests hanya root).
+  const isRootOrSupervisor = isRoot || role === 'supervisor'
 
   const [appraisalRow, setAppraisalRow] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -217,7 +220,6 @@ export function TradeInRequestsPage() {
   const isAllTab = tab === 'all'
 
   const isTradeInOnly = role === 'tradein'
-  const isRootOrSupervisor = role === 'root' || role === 'supervisor'
 
   function tradeinHidesPipelineActions(r) {
     return isTradeInOnly && rowSalesName(r).length > 0
@@ -466,7 +468,7 @@ export function TradeInRequestsPage() {
   }
 
   async function saveEditor() {
-    if (!isRoot || !editId) return
+    if (!isRootOrSupervisor || !editId) return
     setEditErr('')
     setSavingId(editId)
     try {
@@ -498,7 +500,7 @@ export function TradeInRequestsPage() {
       }
       if (createdAtDate) patch.createdAt = Timestamp.fromDate(createdAtDate)
 
-      await updateTradeinRequestRoot(editId, patch)
+      await updateTradeinRequestAdmin(editId, patch)
       setEditOpen(false)
       setEditId('')
     } catch (e) {
@@ -633,7 +635,7 @@ export function TradeInRequestsPage() {
                   ...(isAllTab ? ['Stage'] : []),
                   'Estimasi',
                   ...(showFixAndReason ? ['Harga fix', 'Alasan'] : []),
-                  ...(isRoot ? ['Edit'] : []),
+                  ...(isRootOrSupervisor ? ['Edit'] : []),
                   ...(!isAllTab && !isOtoxpert ? ['Aksi'] : []),
                 ].map((h) => (
                   <th key={h} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
@@ -650,7 +652,7 @@ export function TradeInRequestsPage() {
                       9 +
                       (showFixAndReason ? 2 : 0) +
                       (isAllTab ? 1 : 0) +
-                      (isRoot ? 1 : 0) +
+                      (isRootOrSupervisor ? 1 : 0) +
                       (!isAllTab && !isOtoxpert ? 1 : 0)
                     }
                     className="muted"
@@ -885,7 +887,7 @@ export function TradeInRequestsPage() {
                         </td>
                       ) : null}
 
-                      {isRoot ? (
+                      {isRootOrSupervisor ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                           <button type="button" className="btn" onClick={() => openEditor(r)}>
                             Edit
@@ -1068,7 +1070,7 @@ export function TradeInRequestsPage() {
         <AppraisalResultModal result={appraisalRow} onClose={() => setAppraisalRow(null)} />
       ) : null}
 
-      {isRoot && editOpen ? (
+      {isRootOrSupervisor && editOpen ? (
         <div
           className="modalOverlay"
           role="dialog"
@@ -1361,15 +1363,17 @@ export function TradeInRequestsPage() {
                   Close
                 </button>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ borderColor: 'rgba(239, 68, 68, 0.6)', color: 'rgba(239, 68, 68, 0.95)' }}
-                    onClick={deleteEditor}
-                    disabled={savingId === editId}
-                  >
-                    Hapus
-                  </button>
+                  {isRoot ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ borderColor: 'rgba(239, 68, 68, 0.6)', color: 'rgba(239, 68, 68, 0.95)' }}
+                      onClick={deleteEditor}
+                      disabled={savingId === editId}
+                    >
+                      Hapus
+                    </button>
+                  ) : null}
                   <button type="button" className="btn btnPrimary" onClick={saveEditor} disabled={savingId === editId}>
                     Simpan
                   </button>

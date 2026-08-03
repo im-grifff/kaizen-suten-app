@@ -5,7 +5,7 @@ import {
   deleteTradeinRequest,
   listenTradeinRequests,
   updateTradeinRequest,
-  updateTradeinRequestRoot,
+  updateTradeinRequestAdmin,
 } from '../../firestore/tradeinRequests.js'
 import { normalizePlate } from '../../utils/plateFormat.js'
 import { adminStageToStatus, deriveTradeinAdminStage, TRADEIN_STAGE_LABELS } from '../../utils/tradeinStages.js'
@@ -88,6 +88,8 @@ export function CustomersPage() {
   const { role } = useAuth()
   const isOtoxpert = role === 'otoxpert'
   const isRoot = role === 'root'
+  // Edit data customer: Root & Supervisor. Hapus tetap root-only (rules Firestore).
+  const canEdit = isRoot || role === 'supervisor'
   const [rows, setRows] = useState([])
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('all')
@@ -225,7 +227,7 @@ export function CustomersPage() {
   }
 
   async function saveEditor() {
-    if (!isRoot || !editId) return
+    if (!canEdit || !editId) return
     setEditErr('')
     setSavingId(editId)
     try {
@@ -256,7 +258,7 @@ export function CustomersPage() {
       }
       if (createdAtDate) patch.createdAt = Timestamp.fromDate(createdAtDate)
 
-      await updateTradeinRequestRoot(editId, patch)
+      await updateTradeinRequestAdmin(editId, patch)
       closeEditor()
     } catch (e) {
       setEditErr(e?.message || 'Gagal menyimpan.')
@@ -373,7 +375,7 @@ export function CustomersPage() {
                   ...(tab === 'dealing'
                     ? ['Nama Asuransi', 'Masa Asuransi', 'Jenis Asuransi', '']
                     : []),
-                  ...(isRoot ? ['Edit'] : []),
+                  ...(canEdit ? ['Edit'] : []),
                 ].map((h, i) => (
                   <th key={h || `col-${i}`} style={{ padding: '10px 8px', borderBottom: '1px solid var(--border)' }}>
                     {h}
@@ -384,7 +386,7 @@ export function CustomersPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td className="muted" style={{ padding: 12 }} colSpan={(tab === 'dealing' ? 13 : 9) + (isRoot ? 1 : 0)}>
+                  <td className="muted" style={{ padding: 12 }} colSpan={(tab === 'dealing' ? 13 : 9) + (canEdit ? 1 : 0)}>
                     Tidak ada customer di tab ini.
                   </td>
                 </tr>
@@ -511,7 +513,7 @@ export function CustomersPage() {
                         </>
                       ) : null}
 
-                      {isRoot ? (
+                      {canEdit ? (
                         <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                           <button type="button" className="btn" onClick={() => openEditor(r)}>
                             Edit
@@ -527,7 +529,7 @@ export function CustomersPage() {
         </div>
       </div>
 
-      {isRoot && editOpen ? (
+      {canEdit && editOpen ? (
         <div
           className="modalOverlay"
           role="dialog"
@@ -769,15 +771,17 @@ export function CustomersPage() {
                   Close
                 </button>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ borderColor: 'rgba(239, 68, 68, 0.6)', color: 'rgba(239, 68, 68, 0.95)' }}
-                    onClick={deleteEditor}
-                    disabled={savingId === editId}
-                  >
-                    Hapus
-                  </button>
+                  {isRoot ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ borderColor: 'rgba(239, 68, 68, 0.6)', color: 'rgba(239, 68, 68, 0.95)' }}
+                      onClick={deleteEditor}
+                      disabled={savingId === editId}
+                    >
+                      Hapus
+                    </button>
+                  ) : null}
                   <button type="button" className="btn btnPrimary" onClick={saveEditor} disabled={savingId === editId}>
                     Simpan
                   </button>

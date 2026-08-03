@@ -44,11 +44,11 @@ export async function updateTradeinRequest(id, patch) {
 }
 
 /**
- * Root-only helper:
+ * Helper edit penuh (Root & Supervisor):
  * - Mengizinkan edit request termasuk mengganti plat.
  * - Menjaga index unik di `tradein_plate_index/{plateKey}` agar tidak bentrok.
  */
-export async function updateTradeinRequestRoot(id, patch) {
+export async function updateTradeinRequestAdmin(id, patch) {
   const ref = doc(db, 'tradein_requests', id)
   const before = await getDoc(ref)
   if (!before.exists()) throw new Error('Data trade-in tidak ditemukan.')
@@ -105,7 +105,7 @@ export async function updateTradeinRequestRoot(id, patch) {
 }
 
 /**
- * Root-only helper:
+ * Root-only helper (rules Firestore: delete `tradein_requests` hanya untuk root):
  * - Menghapus request + index plate jika index menunjuk ke request ini.
  */
 export async function deleteTradeinRequest(id) {
