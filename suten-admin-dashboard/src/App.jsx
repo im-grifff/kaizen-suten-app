@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider, useAuth } from './state/AuthContext.jsx'
+import { AuthProvider } from './state/AuthContext.jsx'
 import { RequireAuth } from './ui/RequireAuth.jsx'
 import { RequireRole } from './ui/RequireRole.jsx'
 import { LoginPage } from './screens/auth/LoginPage.jsx'
@@ -11,13 +11,6 @@ import { TshopAdminPage } from './screens/app/TshopAdminPage.jsx'
 import { TradeInRequestsPage } from './screens/app/TradeInRequestsPage.jsx'
 import { VehicleMasterPage } from './screens/app/VehicleMasterPage.jsx'
 import { NotAuthorizedPage } from './screens/app/NotAuthorizedPage.jsx'
-
-function OverviewRoute() {
-  const { role } = useAuth()
-  if (role === 'otoxpert') return <Navigate to="/app/customers" replace />
-  if (role === 'sa') return <Navigate to="/app/tradein-requests" replace />
-  return <DashboardHome />
-}
 
 export default function App() {
   return (
@@ -34,7 +27,8 @@ export default function App() {
             </RequireAuth>
           }
         >
-          <Route index element={<OverviewRoute />} />
+          {/* Overview terbuka untuk semua role; isi kartunya disaring di DashboardHome. */}
+          <Route index element={<DashboardHome />} />
           <Route path="not-authorized" element={<NotAuthorizedPage />} />
 
           <Route

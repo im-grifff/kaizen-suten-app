@@ -10,7 +10,23 @@ import {
 import { requestChannel, CHANNEL_FIRST, CHANNEL_SECOND } from '../../utils/channel.js'
 
 function canReadTradeinOverview(role) {
-  return role === 'root' || role === 'tradein' || role === 'supervisor' || role === 'aftersales'
+  return (
+    role === 'root' ||
+    role === 'tradein' ||
+    role === 'supervisor' ||
+    role === 'aftersales' ||
+    role === 'otoxpert' ||
+    role === 'sa'
+  )
+}
+
+/**
+ * OtoXpert hanya melihat angka channel-nya sendiri, sama seperti pembatasan
+ * di halaman Trade-In Requests. Role lain melihat seluruh data.
+ */
+function scopeRowsForRole(rows, role) {
+  if (role === 'otoxpert') return rows.filter((r) => requestChannel(r) === CHANNEL_SECOND)
+  return rows
 }
 
 function canReadRegistrationRequests(role) {
@@ -384,8 +400,15 @@ export function DashboardHome() {
     return () => unsub?.()
   }, [showRegist])
 
-  const tiStageCounts = useMemo(() => tradeinCountsByStage(tradeinRows), [tradeinRows])
+  // OtoXpert dibatasi ke channel-nya sendiri di seluruh aplikasi; overview ikut
+  // aturan yang sama supaya angka pipeline dealer tidak bocor ke mitra.
+  const scopedRows = useMemo(() => scopeRowsForRole(tradeinRows, role), [tradeinRows, role])
+  const tiStageCounts = useMemo(() => tradeinCountsByStage(scopedRows), [scopedRows])
   const channelData = useMemo(() => channelBreakdown(tradeinRows), [tradeinRows])
+
+  // Kartu perbandingan channel sifatnya lintas-channel, jadi tidak masuk akal
+  // (dan tidak boleh) ditampilkan ke OtoXpert.
+  const showChannelCompare = showTradeinPie && role !== 'otoxpert'
 
   const sortedRegRows = useMemo(() => {
     const copy = [...regRows]
@@ -412,13 +435,14 @@ export function DashboardHome() {
           <div style={{ fontWeight: 900, marginBottom: 8 }}>Trade In — ringkasan per pipeline</div>
           <div className="muted" style={{ marginBottom: 10, fontSize: 12 }}>
             New, Contacted, Inspected, Dealing, Cancel (sama dengan tab Trade In Requests).
+            {role === 'otoxpert' ? ' Khusus channel OtoXpert.' : ''}
           </div>
           {tradeinErr ? <div className="muted" style={{ color: 'salmon' }}>{tradeinErr}</div> : null}
           <TradeInPie counts={tiStageCounts} />
         </div>
       ) : null}
 
-      {showTradeinPie ? (
+      {showChannelCompare ? (
         <div className="card" style={{ marginTop: 16, padding: 16 }}>
           <div style={{ fontWeight: 900, marginBottom: 8 }}>
             Perbandingan Channel — Dealer vs OtoXpert

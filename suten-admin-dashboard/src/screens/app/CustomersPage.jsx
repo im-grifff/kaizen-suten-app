@@ -12,6 +12,7 @@ import { adminStageToStatus, deriveTradeinAdminStage, TRADEIN_STAGE_LABELS } fro
 import { getInsuranceTypeOptions, INSURANCE_TERM_OPTIONS } from '../../utils/insuranceTypes.js'
 import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '../../utils/channel.js'
 import { formatThousands } from '../../utils/numberFormat.js'
+import { canSearchByWa, shouldHideCustomerWa } from '../../utils/waVisibility.js'
 
 const TABS = [
   { id: 'all', label: 'All Customer' },
@@ -145,7 +146,8 @@ export function CustomersPage() {
     return list.filter((r) => {
       const hay = [
         r.customerName || '',
-        getCustomerPhone(r),
+        // Nomor yang disembunyikan tidak boleh bisa dipastikan lewat kotak cari.
+        canSearchByWa(role) ? getCustomerPhone(r) : '',
         unitSummary(r),
         r.salesName || '',
         r.newCarModel || '',
@@ -156,7 +158,7 @@ export function CustomersPage() {
       const plate = normalizePlate(r.plateNumber || r.plateKey || '')
       return Boolean(qPlate) && plate.includes(qPlate)
     })
-  }, [rows, tab, channelFilter, search, isOtoxpert])
+  }, [rows, tab, channelFilter, search, isOtoxpert, role])
 
   async function persistInsurance(id) {
     const draft = insuranceDraft[id]
@@ -295,7 +297,11 @@ export function CustomersPage() {
         <div style={{ width: 320, maxWidth: '100%' }}>
           <input
             className="input"
-            placeholder="Cari nama, WA, plat, unit, atau sales…"
+            placeholder={
+              canSearchByWa(role)
+                ? 'Cari nama, WA, plat, unit, atau sales…'
+                : 'Cari nama, plat, unit, atau sales…'
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -399,6 +405,7 @@ export function CustomersPage() {
                     insuranceType: '',
                   }
                   const typeOptions = getInsuranceTypeOptions(ins.insuranceTermYears)
+                  const hideWa = shouldHideCustomerWa(role, r)
 
                   return (
                     <tr key={r.id}>
@@ -409,7 +416,13 @@ export function CustomersPage() {
                         {r.customerName || '-'}
                       </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }} className="mono">
-                        {getCustomerPhone(r) || '-'}
+                        {hideWa ? (
+                          <span className="muted" title="Nomor WA tidak ditampilkan untuk role Anda">
+                            ••••••
+                          </span>
+                        ) : (
+                          getCustomerPhone(r) || '-'
+                        )}
                       </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }} className="mono">
                         {r.plateNumber || normalizePlate(r.plateKey || '') || '-'}

@@ -66,7 +66,7 @@ export function AppLayout() {
   const isOtoxpert = role === 'otoxpert'
   // SA (Sales Advisor): hanya Trade-In Requests, untuk menjalankan Re-Appraisal.
   const isSa = role === 'sa'
-  const showOverview = !isOtoxpert && !isSa
+  const showOverview = true
   const showCustomers = isRoot || isOtoxpert || role === 'supervisor' || role === 'aftersales'
   const showPricelist = isRoot || role === 'supervisor'
   const showTshop = isRoot || role === 'aftersales'

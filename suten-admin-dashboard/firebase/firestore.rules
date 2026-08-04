@@ -150,8 +150,12 @@ service cloud.firestore {
     match /tradein_requests/{id} {
       // `sa` (Sales Advisor) hanya dipakai untuk Re-Appraisal: boleh baca & update,
       // tapi tidak boleh hapus dan tidak punya akses ke collection lain.
+      // `otoxpert` view-only: sebelumnya tidak pernah dicantumkan di rules sama
+      // sekali padahal UI sudah memberinya akses halaman, jadi semua bacaannya
+      // ditolak diam-diam. Penyaringan ke channel `second` dilakukan di klien;
+      // pembatasan itu bersifat tampilan, bukan jaminan keamanan.
       allow read: if isRoot()
-        || roleIn(['tradein', 'supervisor', 'aftersales', 'sa'])
+        || roleIn(['tradein', 'supervisor', 'aftersales', 'sa', 'otoxpert'])
         || tradeinReadableByWaSession();
       allow create: if isCustomerApp()
         && request.resource.data.customerUid == request.auth.uid

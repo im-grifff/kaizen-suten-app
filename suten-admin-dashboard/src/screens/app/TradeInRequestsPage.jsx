@@ -10,6 +10,7 @@ import {
   TRADEIN_TABS,
 } from '../../utils/tradeinStages.js'
 import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '../../utils/channel.js'
+import { canSearchByWa, shouldHideCustomerWa } from '../../utils/waVisibility.js'
 import { formatThousands } from '../../utils/numberFormat.js'
 import { Timestamp } from 'firebase/firestore'
 import { AppraisalResultModal } from '../../components/AppraisalResultModal.jsx'
@@ -61,11 +62,12 @@ function rowSalesName(r) {
   return String(r.salesName || '').trim()
 }
 
-function matchesSearch(r, q) {
+function matchesSearch(r, q, waSearchable = true) {
   if (!q) return true
   const hay = [
     r.customerName || '',
-    getCustomerPhone(r),
+    // Nomor WA hanya ikut dicari kalau penontonnya memang boleh melihatnya.
+    waSearchable ? getCustomerPhone(r) : '',
     r.plateNumber || normalizePlate(r.plateKey || ''),
     unitSummary(r),
     rowSalesName(r),
@@ -213,10 +215,10 @@ export function TradeInRequestsPage() {
     }
     const q = search.trim().toLowerCase()
     if (q) {
-      list = list.filter((r) => matchesSearch(r, q))
+      list = list.filter((r) => matchesSearch(r, q, canSearchByWa(role)))
     }
     return list
-  }, [rows, tab, channelFilter, search, isOtoxpert])
+  }, [rows, tab, channelFilter, search, isOtoxpert, role])
 
   /** Kolom harga fix + alasan hanya dari tab Inspected ke bawah, atau tab All (read-only). */
   const showFixAndReason =
@@ -231,12 +233,9 @@ export function TradeInRequestsPage() {
     return isTradeInOnly && rowSalesName(r).length > 0
   }
 
-  /**
-   * Trade-in admin (otozentrum) tidak boleh melihat nomor WA customer
-   * jika customer mengisi nama sales. Role lain tetap melihat normal.
-   */
+  /** Lihat src/utils/waVisibility.js untuk aturan lengkapnya. */
   function shouldHideCustomerWaForViewer(r) {
-    return isTradeInOnly && rowSalesName(r).length > 0
+    return shouldHideCustomerWa(role, r)
   }
 
   async function persistEstimate(id) {
@@ -619,7 +618,11 @@ export function TradeInRequestsPage() {
           <input
             className="input"
             style={{ width: 360, maxWidth: '100%' }}
-            placeholder="Cari customer, WA, plat, unit, atau sales…"
+            placeholder={
+              canSearchByWa(role)
+                ? 'Cari customer, WA, plat, unit, atau sales…'
+                : 'Cari customer, plat, unit, atau sales…'
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
