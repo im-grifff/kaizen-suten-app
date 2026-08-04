@@ -13,25 +13,17 @@ import { getInsuranceTypeOptions, INSURANCE_TERM_OPTIONS } from '../../utils/ins
 import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '../../utils/channel.js'
 import { formatThousands } from '../../utils/numberFormat.js'
 import { canSearchByWa, shouldHideCustomerWa } from '../../utils/waVisibility.js'
+import { DateRangeFilter } from '../../components/DateRangeFilter.jsx'
+import { inDateRange, rangeSlug } from '../../utils/dateRange.js'
+import * as XLSX from 'xlsx'
 
 const TABS = [
   { id: 'all', label: 'All Customer' },
   { id: 'dealing', label: 'Dealing Customer' },
 ]
 
-function toDigits(raw) {
-  return String(raw || '').replace(/\D/g, '')
-}
-
 function getCustomerPhone(r) {
   return String(r.customerPhone || r.customerWaKey || '').replace(/\D/g, '')
-}
-
-function toNumberOrNull(raw) {
-  const digits = String(raw ?? '').replace(/[^\d]/g, '')
-  if (!digits) return null
-  const n = Number(digits)
-  return Number.isFinite(n) ? n : null
 }
 
 function toDatetimeLocalValue(ts) {
@@ -95,6 +87,8 @@ export function CustomersPage() {
   const [err, setErr] = useState('')
   const [tab, setTab] = useState('all')
   const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [channelFilter, setChannelFilter] = useState('all')
   const [savingId, setSavingId] = useState('')
   const [insuranceDraft, setInsuranceDraft] = useState({})
@@ -140,6 +134,9 @@ export function CustomersPage() {
     } else if (channelFilter !== 'all') {
       list = list.filter((r) => requestChannel(r) === channelFilter)
     }
+    if (dateFrom || dateTo) {
+      list = list.filter((r) => inDateRange(r.createdAt, dateFrom, dateTo))
+    }
     const q = search.trim().toLowerCase()
     if (!q) return list
     const qPlate = normalizePlate(search)
@@ -158,7 +155,41 @@ export function CustomersPage() {
       const plate = normalizePlate(r.plateNumber || r.plateKey || '')
       return Boolean(qPlate) && plate.includes(qPlate)
     })
-  }, [rows, tab, channelFilter, search, isOtoxpert, role])
+  }, [rows, tab, channelFilter, search, isOtoxpert, role, dateFrom, dateTo])
+
+  /**
+   * Export mengikuti persis apa yang sedang tampil: tab, channel, rentang
+   * tanggal, dan kata pencarian. Nomor WA ikut aturan yang sama dengan tabel —
+   * role yang tidak boleh melihatnya juga tidak mendapatkannya di file.
+   */
+  function exportToExcel() {
+    if (!filtered.length) return
+    const data = filtered.map((r, i) => {
+      const base = {
+        No: i + 1,
+        Created: formatCreated(r.createdAt),
+        Customer: r.customerName || '',
+        WA: shouldHideCustomerWa(role, r) ? '' : getCustomerPhone(r) || '',
+        Plat: r.plateNumber || normalizePlate(r.plateKey || '') || '',
+        Unit: unitSummary(r),
+        'Mobil Baru': r.newCarModel || '',
+        Sales: r.salesName || '',
+        Channel: channelLabel(requestChannel(r)),
+        Stage: TRADEIN_STAGE_LABELS[deriveTradeinAdminStage(r)] || deriveTradeinAdminStage(r),
+      }
+      if (tab === 'dealing') {
+        base['Nama Asuransi'] = r.insuranceName || ''
+        base['Masa Asuransi'] = r.insuranceTermYears ? `${r.insuranceTermYears} tahun` : ''
+        base['Jenis Asuransi'] = r.insuranceType || ''
+      }
+      return base
+    })
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, `Customers ${tab}`.slice(0, 31))
+    const stamp = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `customers-${tab}-${rangeSlug(dateFrom, dateTo)}-${stamp}.xlsx`)
+  }
 
   async function persistInsurance(id) {
     const draft = insuranceDraft[id]
@@ -308,6 +339,18 @@ export function CustomersPage() {
         </div>
       </div>
 
+      <DateRangeFilter
+        from={dateFrom}
+        to={dateTo}
+        onChange={({ from, to }) => {
+          setDateFrom(from)
+          setDateTo(to)
+        }}
+        count={filtered.length}
+        onExport={exportToExcel}
+        exportDisabled={!filtered.length}
+      />
+
       {err ? (
         <div
           className="card"
@@ -369,6 +412,7 @@ export function CustomersPage() {
             <thead>
               <tr style={{ textAlign: 'left' }}>
                 {[
+                  'No.',
                   'Created',
                   'Customer',
                   'WA',
@@ -392,12 +436,12 @@ export function CustomersPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td className="muted" style={{ padding: 12 }} colSpan={(tab === 'dealing' ? 13 : 9) + (canEdit ? 1 : 0)}>
+                  <td className="muted" style={{ padding: 12 }} colSpan={(tab === 'dealing' ? 14 : 10) + (canEdit ? 1 : 0)}>
                     Tidak ada customer di tab ini.
                   </td>
                 </tr>
               ) : (
-                filtered.map((r) => {
+                filtered.map((r, rowIdx) => {
                   const stage = deriveTradeinAdminStage(r)
                   const ins = insuranceDraft[r.id] || {
                     insuranceName: '',
@@ -409,6 +453,12 @@ export function CustomersPage() {
 
                   return (
                     <tr key={r.id}>
+                      <td
+                        className="muted"
+                        style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}
+                      >
+                        {rowIdx + 1}
+                      </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}>
                         {formatCreated(r.createdAt)}
                       </td>

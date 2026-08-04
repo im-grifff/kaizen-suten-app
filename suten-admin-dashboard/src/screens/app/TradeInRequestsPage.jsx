@@ -11,6 +11,8 @@ import {
 } from '../../utils/tradeinStages.js'
 import { channelLabel, requestChannel, CHANNEL_OPTIONS, CHANNEL_SECOND } from '../../utils/channel.js'
 import { canSearchByWa, shouldHideCustomerWa } from '../../utils/waVisibility.js'
+import { DateRangeFilter } from '../../components/DateRangeFilter.jsx'
+import { inDateRange, rangeSlug } from '../../utils/dateRange.js'
 import { formatThousands } from '../../utils/numberFormat.js'
 import { Timestamp } from 'firebase/firestore'
 import { AppraisalResultModal } from '../../components/AppraisalResultModal.jsx'
@@ -48,6 +50,17 @@ function buildWaApiUrl(phone, message) {
 
 function getCustomerPhone(r) {
   return String(r.customerPhone || r.customerWaKey || '').replace(/\D/g, '')
+}
+
+/**
+ * Kapan customer menekan "Minta Pemeriksaan Fisik".
+ * Nilainya bisa Timestamp Firestore (produksi) atau string ISO (data demo/lama).
+ */
+function formatRequestedInspection(r) {
+  const v = r?.customerRequestedInspectionAt
+  if (!v) return ''
+  const d = v?.toDate ? v.toDate() : new Date(v)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('id-ID')
 }
 
 function unitSummary(r) {
@@ -109,6 +122,8 @@ export function TradeInRequestsPage() {
   const [tab, setTab] = useState('new')
   const [channelFilter, setChannelFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [estimates, setEstimates] = useState({})
   const [notesDraft, setNotesDraft] = useState({})
   const [fixedDraft, setFixedDraft] = useState({})
@@ -213,12 +228,15 @@ export function TradeInRequestsPage() {
     } else if (channelFilter !== 'all') {
       list = list.filter((r) => requestChannel(r) === channelFilter)
     }
+    if (dateFrom || dateTo) {
+      list = list.filter((r) => inDateRange(r.createdAt, dateFrom, dateTo))
+    }
     const q = search.trim().toLowerCase()
     if (q) {
       list = list.filter((r) => matchesSearch(r, q, canSearchByWa(role)))
     }
     return list
-  }, [rows, tab, channelFilter, search, isOtoxpert, role])
+  }, [rows, tab, channelFilter, search, isOtoxpert, role, dateFrom, dateTo])
 
   /** Kolom harga fix + alasan hanya dari tab Inspected ke bawah, atau tab All (read-only). */
   const showFixAndReason =
@@ -289,8 +307,9 @@ export function TradeInRequestsPage() {
     }
   }
 
-  function buildExcelRow(r) {
+  function buildExcelRow(r, i) {
     return {
+      No: i + 1,
       Created: r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('id-ID') : '',
       Stage: STAGE_LABELS[deriveAdminStage(r)] || deriveAdminStage(r),
       Customer: r.customerName || '',
@@ -312,9 +331,11 @@ export function TradeInRequestsPage() {
       'Keterangan Estimasi': r.estimateNotes || '',
       'Harga Fix': r.fixedPrice != null ? Number(r.fixedPrice) : '',
       'Alasan Batal': r.cancelReason || '',
+      'Minta Inspeksi': formatRequestedInspection(r) || '',
     }
   }
 
+  /** Export mengikuti persis apa yang sedang tampil (tab + channel + tanggal + pencarian). */
   function exportToExcel() {
     if (!filtered.length) return
     const data = filtered.map(buildExcelRow)
@@ -323,7 +344,7 @@ export function TradeInRequestsPage() {
     const sheetName = `Trade-In ${TABS.find((t) => t.id === tab)?.label || tab}`.slice(0, 31)
     XLSX.utils.book_append_sheet(wb, ws, sheetName)
     const stamp = new Date().toISOString().slice(0, 10)
-    XLSX.writeFile(wb, `tradein-${tab}-${stamp}.xlsx`)
+    XLSX.writeFile(wb, `tradein-${tab}-${rangeSlug(dateFrom, dateTo)}-${stamp}.xlsx`)
   }
 
   function estimateRangeText(id) {
@@ -602,15 +623,6 @@ export function TradeInRequestsPage() {
                 ))}
               </select>
             )}
-            <button
-              type="button"
-              className="btn"
-              onClick={exportToExcel}
-              disabled={!filtered.length}
-              title="Download data tab ini ke Excel (.xlsx)"
-            >
-              Download Excel
-            </button>
           </div>
         </div>
 
@@ -628,11 +640,24 @@ export function TradeInRequestsPage() {
           />
         </div>
 
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onChange={({ from, to }) => {
+            setDateFrom(from)
+            setDateTo(to)
+          }}
+          count={filtered.length}
+          onExport={exportToExcel}
+          exportDisabled={!filtered.length}
+        />
+
         <div style={{ overflowX: 'auto', marginTop: 14 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ textAlign: 'left' }}>
                 {[
+                  'No.',
                   'Created',
                   'Customer',
                   'WA',
@@ -658,7 +683,7 @@ export function TradeInRequestsPage() {
                 <tr>
                   <td
                     colSpan={
-                      9 +
+                      10 +
                       (showFixAndReason ? 2 : 0) +
                       (isAllTab ? 1 : 0) +
                       (isRootOrSupervisor ? 1 : 0) +
@@ -671,7 +696,7 @@ export function TradeInRequestsPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((r) => {
+                filtered.map((r, rowIdx) => {
                   const e = estimates[r.id] || { low: '', high: '' }
                   const plateRaw = r.plateNumber || normalizePlate(r.plateKey || '') || ''
                   const detail = [
@@ -689,11 +714,36 @@ export function TradeInRequestsPage() {
 
                   return (
                     <tr key={r.id}>
+                      <td
+                        className="muted"
+                        style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}
+                      >
+                        {rowIdx + 1}
+                      </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}>
                         {r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('id-ID') : '-'}
                       </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         {r.customerName || '-'}
+                        {r.customerRequestedInspectionAt ? (
+                          <div
+                            title={`Customer meminta pemeriksaan fisik pada ${formatRequestedInspection(r)}`}
+                            style={{
+                              marginTop: 4,
+                              display: 'inline-block',
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: 999,
+                              whiteSpace: 'nowrap',
+                              color: '#bae6fd',
+                              background: 'rgba(56, 189, 248, 0.14)',
+                              border: '1px solid rgba(56, 189, 248, 0.45)',
+                            }}
+                          >
+                            🎯 Minta inspeksi
+                          </div>
+                        ) : null}
                       </td>
                       <td style={{ padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }} className="mono">
                         {hideWa ? (

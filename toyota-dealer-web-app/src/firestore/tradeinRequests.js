@@ -103,14 +103,15 @@ export async function createTradeinRequest(payload) {
 }
 
 /**
- * Customer menekan "Request Inspeksi" pada riwayat trade-in.
- * Memindahkan dokumen dari stage `new` ke `contacted` pada admin dashboard.
+ * Customer menekan "Minta Pemeriksaan Fisik" pada hasil taksasi.
+ *
+ * Stage SENGAJA tidak diubah — request tetap di `new`. Yang ditulis hanya cap
+ * waktu permintaannya, dan admin melihatnya sebagai penanda di dashboard.
+ * Perpindahan stage tetap keputusan admin, bukan customer.
  */
 export async function customerRequestInspection(id) {
   const ref = doc(db, 'tradein_requests', id)
   return updateDoc(ref, {
-    adminStage: 'contacted',
-    status: 'contacted',
     customerRequestedInspectionAt: serverTimestamp(),
   })
 }

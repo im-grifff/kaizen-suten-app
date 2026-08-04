@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../state/AuthContext.jsx';
-import { createTradeinRequest, listenTradeinRequestsForWa, DuplicatePlateError, isPlateAlreadyUsed } from '../../firestore/tradeinRequests.js';
+import { createTradeinRequest, customerRequestInspection, listenTradeinRequestsForWa, DuplicatePlateError, isPlateAlreadyUsed } from '../../firestore/tradeinRequests.js';
 import { buildAppraisalFromConditions } from '../../lib/calculation.js';
 import { generateRecommendation, analyzeEngineSound } from '../../lib/ai.js';
 import { fetchVehicleServiceHistory } from '../../lib/vehicleServiceHistory.js';
@@ -563,25 +563,30 @@ export function TradeInPage() {
     setDoneMsg('');
     setRequestingId(row.id);
     try {
+      const stampedAt = new Date().toISOString();
       if (demoMode) {
         const current = loadDemoHistory(customerWaKey);
         const next = current.map((r) =>
-          r.id === row.id
-            ? {
-                ...r,
-                adminStage: 'contacted',
-                status: 'contacted',
-                customerRequestedInspectionAt: new Date().toISOString(),
-              }
-            : r
+          r.id === row.id ? { ...r, customerRequestedInspectionAt: stampedAt } : r
         );
         saveDemoHistory(customerWaKey, next);
         setRows(next);
-        setSelectedResult((prev) => (prev?.id === row.id ? { ...prev, adminStage: 'contacted', status: 'contacted' } : prev));
+      } else {
+        // Sebelumnya cabang ini tidak ada sama sekali, jadi di produksi tombolnya
+        // hanya memunculkan ucapan terima kasih tanpa menyimpan apa pun.
+        await customerRequestInspection(row.id);
       }
+      setSelectedResult((prev) =>
+        prev?.id === row.id ? { ...prev, customerRequestedInspectionAt: stampedAt } : prev
+      );
+      // Pesan sukses hanya setelah penyimpanan benar-benar berhasil.
       setDoneMsg('🎯 Terima kasih! Permintaan inspeksi fisik telah kami terima. Sales representative Hasjrat Toyota akan segera menghubungi Anda.');
     } catch (e) {
-      alert(e?.message || 'Gagal mengirimkan permintaan');
+      setDoneMsg('');
+      alert(
+        e?.message ||
+          'Gagal mengirimkan permintaan inspeksi. Silakan coba lagi atau hubungi kami langsung.'
+      );
     } finally {
       setRequestingId('');
     }
