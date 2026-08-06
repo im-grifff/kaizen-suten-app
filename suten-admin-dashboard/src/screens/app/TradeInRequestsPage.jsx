@@ -17,6 +17,7 @@ import { formatThousands } from '../../utils/numberFormat.js'
 import { Timestamp } from 'firebase/firestore'
 import { AppraisalResultModal } from '../../components/AppraisalResultModal.jsx'
 import { ReAppraisalModal } from '../../components/ReAppraisalModal.jsx'
+import { WaSalesModal } from '../../components/WaSalesModal.jsx'
 import { canReAppraise } from '../../lib/reAppraisal.js'
 
 const TABS = TRADEIN_TABS
@@ -139,6 +140,7 @@ export function TradeInRequestsPage() {
 
   const [appraisalRow, setAppraisalRow] = useState(null)
   const [reapprRow, setReapprRow] = useState(null)
+  const [waSalesRow, setWaSalesRow] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState('')
   const [editErr, setEditErr] = useState('')
@@ -329,6 +331,8 @@ export function TradeInRequestsPage() {
       'Estimasi Min': r.estimateLow != null ? Number(r.estimateLow) : '',
       'Estimasi Max': r.estimateHigh != null ? Number(r.estimateHigh) : '',
       'Keterangan Estimasi': r.estimateNotes || '',
+      'PIC Sales': r.picSalesName || '',
+      'WA PIC Sales': r.picSalesPhone || '',
       'Harga Fix': r.fixedPrice != null ? Number(r.fixedPrice) : '',
       'Alasan Batal': r.cancelReason || '',
       'Minta Inspeksi': formatRequestedInspection(r) || '',
@@ -419,19 +423,22 @@ export function TradeInRequestsPage() {
     setErr('')
   }
 
-  /** Root / Supervisor: hubungi sales internal (nomor di-prompt). */
-  function chatWaToInternalSales(r) {
-    const raw = window.prompt('Nomor WhatsApp sales (628…)', '')
-    const phone = toDigits(raw || '')
-    if (phone.length < 10) {
-      setErr('Nomor WhatsApp sales tidak valid.')
-      return
-    }
-    setErr('')
+  /**
+   * Root / Supervisor: hubungi sales internal.
+   *
+   * Dulu nomornya diminta lewat `window.prompt` yang hanya muat satu isian,
+   * jadi nama PIC sales tidak pernah bisa ikut dicatat. Sekarang lewat modal
+   * dua field, dan nama PIC-nya disimpan ke request supaya tetap terlihat di
+   * tab berikutnya.
+   */
+  async function submitWaSales({ picSalesName, picSalesPhone }) {
+    const r = waSalesRow
+    if (!r) return
+
     const salesFromCustomer = rowSalesName(r)
     const stageLabel = STAGE_LABELS[tab] || tab
     const lines = [
-      `Halo${salesFromCustomer ? ` ${salesFromCustomer}` : ''},`,
+      `Halo ${picSalesName},`,
       '',
       `Info trade-in — tab admin: ${stageLabel}`,
       `Customer: ${r.customerName || '-'}`,
@@ -440,7 +447,18 @@ export function TradeInRequestsPage() {
       `Unit: ${unitSummary(r)}`,
       `Estimasi (min–max): ${estimateRangeText(r.id)}`,
     ]
-    window.open(buildWaApiUrl(phone, lines.join('\n')), '_blank', 'noopener,noreferrer')
+
+    // Buka WhatsApp DULU, baru simpan. Kalau `window.open` dipanggil setelah
+    // `await`, browser sudah kehilangan konteks klik user dan tab-nya bisa
+    // diblokir sebagai popup — terutama saat koneksi lambat.
+    window.open(buildWaApiUrl(picSalesPhone, lines.join('\n')), '_blank', 'noopener,noreferrer')
+
+    // Kalau penyimpanan gagal, error dilempar ke modal supaya tetap terbuka dan
+    // admin bisa mencoba lagi — WhatsApp-nya sendiri sudah terlanjur terbuka.
+    await updateTradeinRequest(r.id, { picSalesName, picSalesPhone })
+
+    setErr('')
+    setWaSalesRow(null)
   }
 
   async function setStage(id, adminStage, extra = {}) {
@@ -880,6 +898,27 @@ export function TradeInRequestsPage() {
                               onBlur={estimateEditable ? () => persistNotes(r.id) : undefined}
                             />
                           )}
+                          {/* PIC sales yang diisi saat menekan "WA ke sales" di tab
+                              sebelumnya — ditaruh di bawah Keterangan agar terbawa
+                              terlihat pada tab-tab berikutnya. */}
+                          {r.picSalesName ? (
+                            <div
+                              title={
+                                r.picSalesPhone
+                                  ? `PIC sales: ${r.picSalesName} · ${r.picSalesPhone}`
+                                  : `PIC sales: ${r.picSalesName}`
+                              }
+                              style={{
+                                marginTop: 2,
+                                fontSize: 11,
+                                maxWidth: 200,
+                                color: '#bae6fd',
+                              }}
+                            >
+                              <span className="muted">PIC sales:</span>{' '}
+                              <strong>{r.picSalesName}</strong>
+                            </div>
+                          ) : null}
                         </div>
                       </td>
 
@@ -976,7 +1015,7 @@ export function TradeInRequestsPage() {
                           {tab === 'new' ? (
                             <>
                               {isRootOrSupervisor ? (
-                                <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
+                                <button type="button" className="btn" onClick={() => setWaSalesRow(r)}>
                                   WA ke sales
                                 </button>
                               ) : null}
@@ -1015,7 +1054,7 @@ export function TradeInRequestsPage() {
                           {tab === 'contacted' ? (
                             <>
                               {isRootOrSupervisor ? (
-                                <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
+                                <button type="button" className="btn" onClick={() => setWaSalesRow(r)}>
                                   WA ke sales
                                 </button>
                               ) : null}
@@ -1049,7 +1088,7 @@ export function TradeInRequestsPage() {
                           {tab === 'pre_inspection' ? (
                             <>
                               {isRootOrSupervisor ? (
-                                <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
+                                <button type="button" className="btn" onClick={() => setWaSalesRow(r)}>
                                   WA ke sales
                                 </button>
                               ) : null}
@@ -1083,7 +1122,7 @@ export function TradeInRequestsPage() {
                           {tab === 'inspected' ? (
                             <>
                               {isRootOrSupervisor ? (
-                                <button type="button" className="btn" onClick={() => chatWaToInternalSales(r)}>
+                                <button type="button" className="btn" onClick={() => setWaSalesRow(r)}>
                                   WA ke sales
                                 </button>
                               ) : null}
@@ -1138,6 +1177,14 @@ export function TradeInRequestsPage() {
 
       {appraisalRow ? (
         <AppraisalResultModal result={appraisalRow} onClose={() => setAppraisalRow(null)} />
+      ) : null}
+
+      {waSalesRow ? (
+        <WaSalesModal
+          row={waSalesRow}
+          onClose={() => setWaSalesRow(null)}
+          onSubmit={submitWaSales}
+        />
       ) : null}
 
       {reapprRow ? (
