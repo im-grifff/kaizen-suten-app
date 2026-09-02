@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { WA_BENGKEL, WA_SALES } from '../lib/contact.js';
 import { formatRp } from '../lib/appraisalUtils.js';
 import { PrintButton } from './PrintButton.jsx';
 import { pipelineLabel } from '../utils/tradeinCustomerStatus.js';
@@ -253,8 +254,8 @@ export function AppraisalResultModal({ result, onClose, onRequestInspection }) {
 
   // WhatsApp URLs
   const troubleSummaryText = troubles.length > 0 ? troubles.map((t) => t.description.toLowerCase()).join(', ') : 'baret minor bodi, suara mesin normal';
-  const waBookingServiceUrl = `https://wa.me/6281234567890?text=Halo%20Bengkel%20Hasjrat%20Toyota%20Tendean,%20saya%20ingin%20booking%20service%20perbaikan%20diskon%2030%25%20program%20trade-in%20(${encodeURIComponent(troubleSummaryText)})%20untuk%20mobil%20${encodeURIComponent(merk)}%20${encodeURIComponent(model)}%20(${encodeURIComponent(nopol)}).`;
-  const waBookingTradeinUrl = `https://wa.me/6281234567890?text=Halo%20Hasjrat%20Toyota,%20saya%20ingin%20Trade-In%20mobil%20${encodeURIComponent(merk)}%20${encodeURIComponent(model)}%20${encodeURIComponent(varian)}%20(${encodeURIComponent(nopol)}).%20Estimasi%20appraisal:%20${encodeURIComponent(formatRp(harga_min))}%20-%20${encodeURIComponent(formatRp(harga_max))}.`;
+  const waBookingServiceUrl = `https://wa.me/${WA_BENGKEL}?text=Halo%20Bengkel%20Hasjrat%20Toyota%20Tendean,%20saya%20ingin%20booking%20service%20perbaikan%20diskon%2030%25%20program%20trade-in%20(${encodeURIComponent(troubleSummaryText)})%20untuk%20mobil%20${encodeURIComponent(merk)}%20${encodeURIComponent(model)}%20(${encodeURIComponent(nopol)}).`;
+  const waBookingTradeinUrl = `https://wa.me/${WA_SALES}?text=Halo%20Hasjrat%20Toyota,%20saya%20ingin%20Trade-In%20mobil%20${encodeURIComponent(merk)}%20${encodeURIComponent(model)}%20${encodeURIComponent(varian)}%20(${encodeURIComponent(nopol)}).%20Estimasi%20appraisal:%20${encodeURIComponent(formatRp(harga_min))}%20-%20${encodeURIComponent(formatRp(harga_max))}.`;
 
   const gradeTitle = result.deskripsi_grade || (kelas_final === 'A'
     ? 'Mobil Istimewa (Sangat Terawat & Seperti Baru)'
