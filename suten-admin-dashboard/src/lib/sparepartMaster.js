@@ -1,7 +1,8 @@
-// ⚠️ MIRROR dari toyota-dealer-web-app/src/lib/sparepartMaster.js
-// Mesin taksasi HARUS identik di kedua app, kalau tidak hasil Re-Appraisal admin
-// akan beda dari taksasi asli customer. Ubah di sini = wajib ubah di sana juga.
-// Satu-satunya perbedaan yang diizinkan: path import firebase.
+// Salinan dari toyota-dealer-web-app/src/lib/sparepartMaster.js
+// Mesin taksasi harus identik di kedua aplikasi agar hasil Re-Appraisal pada
+// dashboard admin konsisten dengan taksasi yang dilihat customer.
+// Perubahan di satu sisi wajib diikutkan ke sisi lain.
+// Perbedaan yang diizinkan hanya path import Firebase.
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from './firebase.js';
 

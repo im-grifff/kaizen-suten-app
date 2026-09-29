@@ -1,7 +1,8 @@
-// ⚠️ MIRROR dari toyota-dealer-web-app/src/lib/vehicleServiceHistory.js
-// Mesin taksasi HARUS identik di kedua app, kalau tidak hasil Re-Appraisal admin
-// akan beda dari taksasi asli customer. Ubah di sini = wajib ubah di sana juga.
-// Satu-satunya perbedaan yang diizinkan: path import firebase.
+// Salinan dari toyota-dealer-web-app/src/lib/vehicleServiceHistory.js
+// Mesin taksasi harus identik di kedua aplikasi agar hasil Re-Appraisal pada
+// dashboard admin konsisten dengan taksasi yang dilihat customer.
+// Perubahan di satu sisi wajib diikutkan ke sisi lain.
+// Perbedaan yang diizinkan hanya path import Firebase.
 /**
  * Fetch official Toyota service history (GR & BP) by police number (nopol).
  * Hits external Hasjrat Toyota Backend API via Vite Proxy (bypasses browser CORS).
