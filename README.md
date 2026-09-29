@@ -1,5 +1,19 @@
 <div align="center">
 
+## © 2026 HASJRAT TOYOTA TENDEAN
+
+**Seluruh hak cipta dilindungi undang-undang**
+
+**Developed by GRIFFIN**
+
+<sub>Perangkat lunak ini beserta seluruh kode sumber, rancangan, dan dokumentasinya merupakan milik Hasjrat Toyota Tendean.<br />Dilarang menggandakan, mendistribusikan, atau menggunakan sebagian maupun seluruhnya tanpa izin tertulis.</sub>
+
+</div>
+
+---
+
+<div align="center">
+
 <img src="toyota-dealer-web-app/public/logo.png" alt="SUTEN" width="96" />
 
 # SUTEN
@@ -168,15 +182,6 @@ npm run lint      # pemeriksaan kode
 
 <div align="center">
 
-### Hak Cipta
-
-**© 2026 HASJRAT TOYOTA TENDEAN**
-Seluruh hak cipta dilindungi undang-undang.
-
-**Developed by GRIFFIN**
-
-<br />
-
-<sub>Perangkat lunak ini beserta seluruh kode sumber, rancangan, dan dokumentasinya merupakan milik Hasjrat Toyota Tendean.<br />Dilarang menggandakan, mendistribusikan, atau menggunakan sebagian maupun seluruhnya tanpa izin tertulis.</sub>
+<sub>© 2026 Hasjrat Toyota Tendean · Developed by Griffin</sub>
 
 </div>
